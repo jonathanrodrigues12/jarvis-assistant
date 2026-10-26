@@ -446,6 +446,9 @@ export default function App() {
         case 'screen':
           s.clearScreen(a.what ?? 'all')
           break
+        case 'close':
+          s.closeWindows(String(a.target ?? 'front'))
+          break
         default:
           console.warn('[jarvis] unknown ui op:', op, args)
       }

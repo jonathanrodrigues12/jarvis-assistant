@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useStore, isCard, type Blade } from '../store'
+import { BrowserBlade } from './BrowserBlade'
 import { BRIDGE_HTTP_URL } from '../config'
 import { sanitisePanelHtml } from './sanitise'
 import { frameSpan, peaceScroll, pinchCount } from '../lib/hands'
@@ -160,6 +161,8 @@ const CameraView = memo(function CameraView() {
 /** Also what the deck's cards render through, so markup has one sanitised path. */
 export const Body = memo(function Body({ blade }: { blade: Blade }) {
   if (blade.kind === 'camera') return <CameraView />
+
+  if (blade.kind === 'browser' && blade.url) return <BrowserBlade url={blade.url} />
 
   if (blade.kind === 'article' && blade.url) {
     return (

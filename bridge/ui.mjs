@@ -485,6 +485,27 @@ export function uiServer(emit) {
         },
       ),
 
+      tool(
+        'ui_close',
+        'Close windows on the interface: blades, the browser, the briefing cards. ' +
+          'Use it when the user asks to close something ("fecha isso", "fecha o navegador", ' +
+          '"fecha tudo", "fecha o card do clima"), and when you are done with a window you ' +
+          'opened. target: "front" = the one in front (for "isso"/"essa"), "browser" = the ' +
+          'in-app browser, "cards" = every briefing card, "all" = everything, or any other ' +
+          'text to close the windows whose title or kicker contains it, e.g. "clima", "github".',
+        {
+          target: z
+            .string()
+            .default('front')
+            .catch('front')
+            .describe('"front", "browser", "cards", "all", or part of a window title.'),
+        },
+        async (args) => {
+          emit('close', { target: args.target ?? 'front' })
+          return ok('Closed.')
+        },
+      ),
+
       tool('ui_reset', RESET_DESCRIPTION, {}, async () => {
         emit('reset', {})
         return ok('Interface restored.')

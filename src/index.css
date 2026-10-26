@@ -2089,3 +2089,64 @@ kbd {
 .mic-waking { opacity: 1; }
 .mic-offline,
 .mic-boot { opacity: 0; }
+
+/* ---------------------------------------------------------- browser blade */
+
+/* A real browser inside a blade: a slim address bar over a <webview> that
+   fills the rest. See BrowserBlade.tsx. */
+.bw {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+.bw-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  background: rgba(6, 20, 58, 0.85);
+  pointer-events: auto;
+}
+.bw-bar button {
+  width: 28px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: rgba(60, 120, 255, 0.12);
+  color: #cfe0ff;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.bw-bar button:disabled { opacity: 0.3; cursor: default; }
+.bw-address {
+  flex: 1;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: rgba(2, 10, 34, 0.7);
+  color: #e3edff;
+  font: 400 12px 'JetBrains Mono', monospace;
+  text-transform: none;
+  letter-spacing: 0;
+  outline: none;
+}
+.bw-address:focus { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+.bw-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  background: #fff;
+  pointer-events: auto;
+}
+.bw-note {
+  padding: 6px 12px;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  opacity: 0.7;
+}

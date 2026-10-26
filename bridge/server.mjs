@@ -22,6 +22,7 @@ import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
 import { briefingConfig, briefingServer } from './briefing.mjs'
+import { browserEnabled, browserServer } from './browser.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -295,6 +296,10 @@ function decideTool(name) {
     // The briefing sources only ever read public weather and headlines.
     if (server === 'jarvis_briefing') return true
 
+    // The in-app browser gates itself, per action: links and reading always,
+    // buttons and typing only with writes on. See browser.mjs.
+    if (server === 'jarvis_browser') return true
+
     const tool = mcpToolOf(name)
     if (EFFECTFUL_VERB.test(tool) && !VETO_EXEMPT.has(`${server}__${tool}`)) {
       return ALLOW_WRITES
@@ -393,6 +398,54 @@ aparece no centro e o anterior desce para a fileira abaixo do orbe, então não
 repita no card seguinte o que já está na fileira.
 `
 
+/**
+ * What JARVIS knows about the person he works for, in their own words.
+ *
+ * preferencias.md at the project root — name, routine, interests, how they
+ * like to be spoken to — is appended to the persona. Read on every connection
+ * rather than once at boot, so an edit takes effect on the next page reload
+ * without restarting the bridge. The file is gitignored: it is personal.
+ */
+const PREFS_PATH = new URL('../preferencias.md', import.meta.url)
+
+function readPreferences() {
+  try {
+    const text = readFileSync(PREFS_PATH, 'utf8').trim()
+    if (!text) return ''
+    return (
+      '\n\nPREFERÊNCIAS DO USUÁRIO — escritas por ele. Siga-as, mas nunca as leia em ' +
+      'voz alta nem diga que tem um arquivo de preferências.\n\n' +
+      text +
+      '\n'
+    )
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Only in the desktop app, where the browser exists. It outranks everything
+ * TOOLS_PROMPT says about Chrome, because it is on screen: the user watches the
+ * page JARVIS is on instead of hearing about a tab somewhere behind the window.
+ */
+const BROWSER_PROMPT = `
+
+YOUR OWN BROWSER — the browser_* tools. This outranks the chrome_* rules below.
+- browser_open puts a real browser on screen, inside this interface, on a blade.
+  It runs scripts and keeps its own saved logins. For ANY page the user wants to
+  open, see, read or use — a site, a search, a link, their mail, a dashboard —
+  open it here first. For a web search, open https://www.google.com/search?q=...
+- This browser IS a way of showing something: once it is open, the user is
+  looking at it. Do not also put the same page on another blade.
+- To act on the page: browser_read gives the text and numbered links, buttons
+  and fields; then browser_click or browser_type with those numbers. Read again
+  after every navigation. browser_screenshot when the layout carries meaning.
+- If a site asks for a login, say so in one sentence and let the user sign in
+  on the blade themselves; it is remembered afterwards. Never ask for passwords.
+- Use the chrome_* tools only if this browser cannot reach something the user's
+  own Chrome can.
+`
+
 const TOOLS_PROMPT = `
 
 The blades — the ONLY surface:
@@ -421,7 +474,10 @@ The interface itself:
 - The interface is yours as well. \`ui_theme\` retints it, \`ui_reactor\` reshapes
   the core, \`ui_orbit\` hangs your own images around it, \`ui_chrome\` hides the
   furniture, \`ui_effect\` fires one flourish, \`ui_screen\` clears it down,
+  \`ui_close\` closes windows (one, by title, the browser, the cards, or all),
   \`ui_reset\` puts everything back.
+- When the user asks to close something, close it with \`ui_close\` and say at
+  most "Fechado." — "isso" or "essa" means the window in front.
 - Change it when the change carries meaning and the meaning arrives faster than
   speech: red before you report the failure, the chrome stripped so one image
   fills the frame, the reactor slowed while you wait on something. Never
@@ -1066,6 +1122,11 @@ console.log(
 )
 console.log(`[jarvis] model ${MODEL} · effort ${EFFORT}`)
 console.log(
+  browserEnabled
+    ? `[jarvis] in-app browser on DevTools port ${process.env.JARVIS_BROWSER_CDP}`
+    : '[jarvis] in-app browser off — run the desktop app (npm run app) for it',
+)
+console.log(
   `[jarvis] briefing: ${briefingConfig.city} · ${briefingConfig.topics.join(', ')}` +
     ' — set JARVIS_CITY and JARVIS_NEWS_TOPICS to change',
 )
@@ -1280,12 +1341,23 @@ wss.on('connection', (socket) => {
         jarvis_eyes: visionServer(ask),
         // Weather, headlines and the time, for "bom dia".
         jarvis_briefing: briefingServer(),
+        // The browser on the blade — only when running inside the desktop app,
+        // which is what provides one.
+        ...(browserEnabled
+          ? {
+              jarvis_browser: browserServer({
+                allowWrites: ALLOW_WRITES,
+                emitBlade: (blade) => send({ type: 'blade', blade }),
+              }),
+            }
+          : {}),
       },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt: SYSTEM_PROMPT + TOOLS_PROMPT,
+      systemPrompt:
+        SYSTEM_PROMPT + readPreferences() + (browserEnabled ? BROWSER_PROMPT : '') + TOOLS_PROMPT,
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),

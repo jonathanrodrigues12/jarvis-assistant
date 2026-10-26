@@ -112,7 +112,7 @@ const BY_TOOL: Rule[] = [
   // The editors, once the two rules that read the verb have had their turn.
   { server: /palmier|heygen|runway|descript/, lines: FOOTAGE },
   {
-    server: /playwright|puppeteer|browserbase|chrome/,
+    server: /playwright|puppeteer|browserbase|chrome|jarvis_browser/,
     tool: /\bbrowser\b|navigate/,
     lines: ['Abrindo o navegador.', 'Navegando.'],
   },

@@ -39,8 +39,8 @@ export type Panel = {
 export type Blade = {
   id: string
   title: string
-  kind: 'article' | 'image' | 'gallery' | 'video' | 'embed' | 'markup' | 'camera'
-  /** article / image / video / embed. */
+  kind: 'article' | 'image' | 'gallery' | 'video' | 'embed' | 'markup' | 'camera' | 'browser'
+  /** article / image / video / embed / browser. */
   url?: string
   /** gallery. */
   images?: string[]
@@ -279,6 +279,8 @@ type State = {
   fireEffect: (kind: UiEffect['kind']) => void
   resetUi: () => void
   clearScreen: (what: 'all' | 'panels' | 'transcript') => void
+  /** JARVIS closing windows: 'front', 'browser', 'cards', 'all', or part of a title. */
+  closeWindows: (target: string) => void
 }
 
 export const useStore = create<State>((set) => ({
@@ -423,6 +425,36 @@ export const useStore = create<State>((set) => ({
       return what === 'all'
         ? { ...cleared, caption: '', activeTool: null }
         : cleared
+    }),
+  closeWindows: (target) =>
+    set((s) => {
+      // Accents and case dropped, so "noticias" closes "NOTÍCIAS".
+      const plain = (t: string) =>
+        t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+      const want = plain(target || 'front')
+      let gone: (b: Blade) => boolean
+      if (want === 'all') gone = () => true
+      else if (want === 'cards') gone = isCard
+      else if (want === 'browser') gone = (b) => b.kind === 'browser'
+      else if (want === 'front') {
+        // What the user is looking at: the focused one, else the newest blade,
+        // else — when only cards are up — the card in the middle of the deck.
+        const blades = s.blades.filter((b) => !isCard(b))
+        const pick =
+          s.blades.find((b) => b.id === s.focusedBlade) ??
+          blades[blades.length - 1] ??
+          s.blades[s.blades.length - 1]
+        gone = (b) => b.id === pick?.id
+      } else {
+        gone = (b) => plain(b.title).includes(want) || plain(b.kicker ?? '').includes(want)
+      }
+      const blades = s.blades.filter((b) => !gone(b))
+      const alive = new Set(blades.map((b) => b.id))
+      return {
+        blades,
+        focusedBlade: s.focusedBlade && alive.has(s.focusedBlade) ? s.focusedBlade : null,
+        expandedBlade: s.expandedBlade && alive.has(s.expandedBlade) ? s.expandedBlade : null,
+      }
     }),
 }))
 
