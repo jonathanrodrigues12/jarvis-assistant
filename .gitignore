@@ -28,3 +28,9 @@ public/mediapipe/
 
 # Preferências pessoais do JARVIS
 preferencias.md
+
+# Face models copied out of node_modules by scripts/vendor.mjs
+public/human-models/
+
+# The user's own entrance music (copyrighted; never committed)
+public/audio/match.mp3

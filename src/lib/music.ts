@@ -19,7 +19,12 @@
  * play, and the synthesised bed in sfx.ts covers the ambient case.
  */
 
-type Cue = 'boot-music' | 'ambient' | 'work'
+/**
+ * `match` is the user's own track for the moment the biometric gate recognises
+ * them — public/audio/match.mp3, supplied by the user; nothing ships under that
+ * name. Without it the gate falls back to the boot cue.
+ */
+type Cue = 'boot-music' | 'ambient' | 'work' | 'match'
 
 type Track = {
   el: HTMLAudioElement
@@ -41,7 +46,7 @@ const missing = new Set<Cue>()
  * sentence. It never looped; it was raised from the dead once a turn.
  */
 const finished = new Set<Cue>()
-const ALL: Cue[] = ['boot-music', 'ambient', 'work']
+const ALL: Cue[] = ['boot-music', 'ambient', 'work', 'match']
 let enabled = false
 
 /** Resting levels. Music sits well under the voice — it is atmosphere, not a
@@ -65,6 +70,9 @@ const LEVEL: Record<Cue, number> = {
    */
   ambient: 0.1,
   work: 0.11,
+  // The entrance music is the moment itself, so it plays forward; it still
+  // ducks under the voice when he greets the user over it.
+  match: 0.8,
 }
 
 /**
@@ -73,7 +81,7 @@ const LEVEL: Record<Cue, number> = {
  * is speaking brings the work cue in at its ducked level rather than at full,
  * and it rises the rest of the way when he stops.
  */
-const want: Record<Cue, number> = { 'boot-music': 0, ambient: 0, work: 0 }
+const want: Record<Cue, number> = { 'boot-music': 0, ambient: 0, work: 0, match: 0 }
 
 let ducked = false
 /** How far the bed drops under the voice. */
@@ -133,7 +141,10 @@ function level(cue: Cue): number {
   return ducked && cue !== 'boot-music' ? want[cue] * DUCK : want[cue]
 }
 
-function fadeTo(cue: Cue, to: number, ms: number) {
+/** Ease-out: most of the change up front, then a soft tail. */
+const easeOut = (k: number) => 1 - (1 - k) ** 3
+
+function fadeTo(cue: Cue, to: number, ms: number, ease: (k: number) => number = (k) => k) {
   const t = track(cue)
   if (!t) return
   if (t.fade !== null) cancelAnimationFrame(t.fade)
@@ -141,7 +152,7 @@ function fadeTo(cue: Cue, to: number, ms: number) {
   const start = performance.now()
   const step = () => {
     const k = Math.min(1, (performance.now() - start) / ms)
-    t.el.volume = from + (to - from) * k
+    t.el.volume = from + (to - from) * ease(k)
     if (k < 1) t.fade = requestAnimationFrame(step)
     else {
       t.fade = null
@@ -158,6 +169,18 @@ function fadeTo(cue: Cue, to: number, ms: number) {
 function set(cue: Cue, to: number, ms: number) {
   want[cue] = to
   fadeTo(cue, level(cue), ms)
+}
+
+/**
+ * How long until the boot cue has played out, in milliseconds; 0 when it is
+ * not playing. Read rather than awaited on 'ended', because the cue dissolves
+ * and pauses near its end and an element paused early never fires 'ended'.
+ */
+export function bootRemainingMs(): number {
+  const t = tracks.get('boot-music')
+  if (!t || t.el.paused || finished.has('boot-music')) return 0
+  const secs = Number.isFinite(t.el.duration) ? t.el.duration : 0
+  return Math.max(0, (secs - t.el.currentTime) * 1000)
 }
 
 /** The boot cue's own dissolve, held so stopAll can cancel it. */
@@ -218,6 +241,35 @@ export function startAmbient() {
   set('ambient', LEVEL.ambient, 900)
 }
 
+/**
+ * The entrance music, the moment the biometric gate lets the user in. Plays
+ * public/audio/match.mp3 once, from the top; when there is no such file it
+ * falls back to the boot cue so the moment is never silent.
+ */
+export function playMatch() {
+  enable()
+  const t = track('match')
+  if (!t) return playBoot()
+  t.el.addEventListener('error', () => playBoot(), { once: true })
+  finished.delete('match')
+  t.el.currentTime = 0
+  set('match', LEVEL.match, 150)
+}
+
+/**
+ * The user has started talking: the entrance music is over. Never a hard cut —
+ * an ease-out that clears most of the level in the first few hundred
+ * milliseconds, so the voice is not fighting it, and lets the last of it tail
+ * away. Marked finished so that the end of the next answer — which un-ducks
+ * every cue — cannot bring it back.
+ */
+export function stopMatch() {
+  if (!tracks.has('match') || finished.has('match')) return
+  finished.add('match')
+  want.match = 0
+  fadeTo('match', 0, 1200, easeOut)
+}
+
 export function stopAll() {
   if (dissolve) {
     clearTimeout(dissolve)
@@ -242,7 +294,7 @@ export function duck(on: boolean) {
   ducked = on
   // Down quickly, back up slowly: the drop has to be out of the way before the
   // first syllable, but a fast recovery is audible as a swell.
-  ;(['ambient', 'work'] as Cue[]).forEach((c) => {
+  ;(['ambient', 'work', 'match'] as Cue[]).forEach((c) => {
     if (tracks.has(c)) fadeTo(c, level(c), on ? 250 : 900)
   })
 }

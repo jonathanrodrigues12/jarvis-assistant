@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { AuthGate, type SystemProgress } from './ui/AuthGate'
 import { Scene } from './scene/Scene'
 import { Hud } from './ui/Hud'
 import { Boot } from './ui/Boot'
@@ -13,7 +14,7 @@ import * as hands from './lib/hands'
 import { listenForClap } from './lib/clap'
 import * as camera from './lib/camera'
 import * as kokoro from './lib/kokoro'
-import { TTS_ENGINE } from './config'
+import { TTS_ENGINE, AUTH_MODE, welcomeLine } from './config'
 import { forTool, attention } from './lib/fillers'
 import {
   ask,
@@ -84,6 +85,19 @@ export default function App() {
    */
   const turn = useRef(0)
   const booting = useRef(false)
+
+  /**
+   * Whether the biometric gate has let us through. Until it has, nothing can
+   * power the assistant on — not the clap, not the space bar — and when it
+   * does, the assistant starts by itself.
+   */
+  const [authed, setAuthed] = useState(AUTH_MODE === 'off')
+  const authedRef = useRef(authed)
+  authedRef.current = authed
+  /** Set by the gate; the welcome is said once, when the boot that follows ends. */
+  const greetOnReady = useRef(false)
+  /** The one start-up of every system, shared by the gate and the ignition. */
+  const systems = useRef<Promise<void> | null>(null)
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const voicePoll = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -241,6 +255,8 @@ export default function App() {
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot') return
 
+    // Talking to him ends the entrance music.
+    music.stopMatch()
     store.getState().setError(null)
     sfx.play('wake')
 
@@ -272,6 +288,10 @@ export default function App() {
     clearIdle()
     const phase = store.getState().phase
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
+
+    // The user's voice ends the entrance music — including when they answer
+    // the welcome, which needs no wake word.
+    music.stopMatch()
 
     const wasBusy =
       phase === 'thinking' || phase === 'tooling' || phase === 'speaking'
@@ -361,6 +381,55 @@ export default function App() {
     music.startAmbient()
 
     s.setPhase('boot')
+
+    // The boot sequence in Boot.tsx plays while the systems really come up,
+    // and lasts at least as long as its own animation.
+    await Promise.all([initSystems(), new Promise((r) => setTimeout(r, 9200))])
+    enterInterface()
+  }
+
+  /**
+   * Into the live interface. From the ignition path the boot sequence has just
+   * played; from the biometric gate it is skipped, because the gate's loading
+   * bar already showed every system coming up for real and a second, staged
+   * start-up would only be pretending to do it again.
+   */
+  const enterInterface = () => {
+    store.getState().setPhase('dormant')
+    if (greetOnReady.current) {
+      greetOnReady.current = false
+      void greet()
+    }
+  }
+
+  /** After the gate: straight in. The entrance music is already playing — the
+   *  gate started it at the match — so nothing else is added under it. */
+  const enterFromGate = async () => {
+    if (booting.current) return
+    booting.current = true
+    await sfx.unlockAudio()
+    await initSystems()
+    enterInterface()
+  }
+
+  /**
+   * Bring every system up for real, once, reporting each step. The biometric
+   * gate drives this during its loading bar; the ignition path awaits the same
+   * promise, so nothing is ever started twice.
+   */
+  const initSystems = (progress: SystemProgress = () => {}) => {
+    systems.current ??= bringUpSystems(progress).catch((err) => {
+      // A failed start can be retried: forget the promise so the next call
+      // runs it again rather than handing back the same rejection.
+      systems.current = null
+      throw err
+    })
+    return systems.current
+  }
+
+  const bringUpSystems = async (progress: SystemProgress) => {
+    const s = store.getState()
+    progress(0, 'REGISTRANDO CANAIS')
 
     watchServers((servers) => store.getState().setConnected(servers))
     watchPanels((panel) => store.getState().pushPanel(panel))
@@ -465,7 +534,13 @@ export default function App() {
           .setError('Bridge reconectada. A conversa anterior não foi mantida.')
       }
     })
-    const warming = warm().catch((err: Error) => s.setError(err.message))
+    progress(0.1, 'CONECTANDO AO NÚCLEO')
+    // A bridge that cannot be reached is a failed start, not a warning: without
+    // it nothing he hears can be answered.
+    await warm()
+    const linked = connectedLabels()
+    store.getState().setConnected(linked)
+    progress(0.35, `NÚCLEO ONLINE · ${linked.length} SISTEMAS`)
 
     if (!usingBridge && !env.anthropicKey) {
       s.setError(
@@ -491,19 +566,19 @@ export default function App() {
       }, 200)
     }
 
-    // Long enough for the four-beat start-up sequence in Boot.tsx to play —
-    // status bar, rings, suit schematic, reactor power-up — before the live
-    // interface takes over. Kept a touch under the boot cue so the music is
-    // still rising as the reactor lands.
-    await new Promise((r) => setTimeout(r, 9200)) // boot sequence
-    await warming
-    store.getState().setConnected(connectedLabels())
+    // Ask the bridge which speech engines exist before the loop starts, so the
+    // first turn already uses ElevenLabs when a key is present and the browser
+    // fallback when it is not — no flag, no reload.
+    progress(0.45, 'VERIFICANDO SÍNTESE DE VOZ')
+    const caps = await probeCapabilities()
     store.getState().setVoice(currentVoiceName())
+    progress(0.6, `VOZ · ${caps.tts ? 'ELEVENLABS' : 'SISTEMA'}`)
 
     // The analyser is what makes the reactor pulse with your voice. It needs a
     // getUserMedia stream; speech recognition does not, and gets its own. So a
     // failure here costs the animation and nothing else — saying "voice input
     // is unavailable" was both alarming and untrue.
+    progress(0.7, 'ATIVANDO MICROFONE')
     try {
       await startAnalyser()
     } catch {
@@ -513,22 +588,48 @@ export default function App() {
       )
     }
 
-    // Ask the bridge which speech engines exist before the loop starts, so the
-    // first turn already uses ElevenLabs when a key is present and the browser
-    // fallback when it is not — no flag, no reload.
-    await probeCapabilities()
-
-    // One voice loop, started once, running until the page closes.
+    // One voice loop, started once, running until the page closes. Until the
+    // phase leaves 'offline' it is deaf, so starting it behind the gate is safe.
+    progress(0.85, `INICIANDO ESCUTA · ${caps.stt ? 'SCRIBE' : 'NAVEGADOR'}`)
     voice.current = await startVoice({
       mode,
       onWake,
       onSpeechStart,
+      // Any voice, in any mode, ends the entrance music — the moment it starts,
+      // not once the words have been transcribed.
+      onVoice: () => music.stopMatch(),
       onPartial,
       onUtterance,
       onError: onVoiceError,
     })
+    progress(1, 'SISTEMAS ONLINE')
+  }
 
-    store.getState().setPhase('dormant')
+  /**
+   * The welcome after the biometric gate: said once he is fully up, and then
+   * the microphone is left open so the answer to "em que posso ajudar" needs
+   * no wake word.
+   *
+   * It waits for the recorded introduction to finish first — the boot track
+   * carries its own spoken line and runs past the end of the boot sequence, and
+   * two voices at once is the one thing an assistant must never do. The last
+   * second and a half of the track is only the closing effect, so the welcome
+   * is allowed to start over it.
+   */
+  const greet = async () => {
+    const wait = music.bootRemainingMs() - 1500
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+    // Anything that happened meanwhile — he was woken, or put to sleep — wins.
+    if (store.getState().phase !== 'dormant') return
+    const mine = ++turn.current
+    const spk = createSpeaker()
+    speaker.current = spk
+    store.getState().setPhase('speaking')
+    spk.say(welcomeLine())
+    await spk.end()
+    if (mine !== turn.current) return
+    speaker.current = null
+    listen(AWAIT_SPEECH_MS)
   }
 
   // -- clap to start --------------------------------------------------------
@@ -546,7 +647,7 @@ export default function App() {
    * about a feature nobody asked for would be worse than quietly doing without.
    */
   useEffect(() => {
-    if (phase !== 'offline') return
+    if (phase !== 'offline' || !authed) return
     let live: { stop: () => void } | null = null
     let gone = false
     void listenForClap(() => {
@@ -560,7 +661,7 @@ export default function App() {
       live?.stop()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
+  }, [phase, authed])
 
   // -- level pump + keys ----------------------------------------------------
 
@@ -670,7 +771,7 @@ export default function App() {
 
       const phase = store.getState().phase
       if (phase === 'offline') {
-        void powerOn()
+        if (authedRef.current) void powerOn()
       } else if (phase === 'boot') {
         /* ignore — the boot sequence owns the phase until it finishes */
       } else if (
@@ -705,7 +806,18 @@ export default function App() {
       <Hud />
       <Boot />
       <Diagnostics />
-      <Ignition onStart={() => void powerOn()} />
+      {authed ? (
+        <Ignition onStart={() => void powerOn()} />
+      ) : (
+        <AuthGate
+          systems={initSystems}
+          onGranted={() => {
+            setAuthed(true)
+            greetOnReady.current = true
+            void enterFromGate()
+          }}
+        />
+      )}
     </>
   )
 }

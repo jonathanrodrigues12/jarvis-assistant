@@ -13,11 +13,16 @@ audience can see it (a description box is fine).
 
 ## JARVIS 2.0: abertura em português
 
-`boot-music.mp3` agora traz a fala de abertura em português, gerada no
-ElevenLabs com a voz George (`eleven_multilingual_v2`) e montada sobre os
-efeitos eletrônicos do início e do fim da faixa original. A versão original em
-inglês está guardada em `boot-music-en.mp3`; para voltar a ela, copie-a por cima
-de `boot-music.mp3`.
+`boot-music.mp3` agora traz só os efeitos eletrônicos do início e do fim da
+faixa original, sem fala: quem fala é o JARVIS, com o cumprimento ao usuário
+depois da autenticação. `auth-loading.mp3` é o trecho inicial da mesma faixa,
+tocado durante o loading da autenticação.
+
+Versões guardadas, para voltar a qualquer uma copiando-a por cima de
+`boot-music.mp3`:
+- `boot-music-pt.mp3` — com a fala de abertura em português (voz George no
+  ElevenLabs, `eleven_multilingual_v2`).
+- `boot-music-en.mp3` — a original, com a fala em inglês.
 
 ## Attribution to paste into a video description
 

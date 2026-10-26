@@ -136,15 +136,47 @@ export const KOKORO_VOICE = choice(
 
 /**
  * The centrepiece.
- *   'filaments' — a ball of glowing, breathing loops. The default.
+ *   'nucleus'   — a folded shell of glowing points that pulses with the voice. The default.
+ *   'filaments' — a ball of glowing, breathing loops.
  *   'reactor'   — the original ring and its dust field.
  */
-export const ORB_STYLE: 'filaments' | 'reactor' = choice(
+export const ORB_STYLE: 'nucleus' | 'filaments' | 'reactor' = choice(
   'VITE_ORB',
   import.meta.env.VITE_ORB,
-  ['filaments', 'reactor'] as const,
-  'filaments',
+  ['nucleus', 'filaments', 'reactor'] as const,
+  'nucleus',
 )
+
+/**
+ * The biometric gate in front of the interface (AuthGate.tsx).
+ *   'face' — scan and recognise the user's face first. The default.
+ *   'off'  — straight to the ignition screen.
+ */
+export const AUTH_MODE: 'face' | 'off' = choice(
+  'VITE_AUTH',
+  import.meta.env.VITE_AUTH,
+  ['face', 'off'] as const,
+  'face',
+)
+
+/** Shown on the biometric gate once the face has been recognised. */
+export const USER_NAME = (str(import.meta.env.VITE_USER_NAME) ?? 'SENHOR').toUpperCase()
+
+/** How he addresses the user: 'senhor' or 'senhora'. Also picks bem-vindo/a. */
+export const USER_TITLE: 'senhor' | 'senhora' = choice(
+  'VITE_USER_TITLE',
+  import.meta.env.VITE_USER_TITLE,
+  ['senhor', 'senhora'] as const,
+  'senhor',
+)
+
+/** "Bem-vindo, senhor Jonathan. Em que posso ajudar hoje?" — said once the
+ *  gate has let the user in and the assistant is ready to listen. */
+export function welcomeLine(): string {
+  const first = str(import.meta.env.VITE_USER_NAME)?.split(/\s+/)[0]
+  const welcome = USER_TITLE === 'senhora' ? 'Bem-vinda' : 'Bem-vindo'
+  return `${welcome}, ${USER_TITLE}${first ? ` ${first}` : ''}. Em que posso ajudar hoje?`
+}
 
 export const env = {
   anthropicKey: str(import.meta.env.VITE_ANTHROPIC_API_KEY) ?? '',

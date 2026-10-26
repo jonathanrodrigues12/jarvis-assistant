@@ -45,6 +45,26 @@ export function micLevel(): number {
   return Math.min(1, avg * 3.2)
 }
 
+/**
+ * The microphone's spectrum folded into `bands` bars, each 0..1, for the HUD's
+ * audio card. The voice lives in the low third of the analyser's range, so only
+ * that part is spread across the bars; above it is mostly hiss. All zeros
+ * before the analyser is up.
+ */
+export function micSpectrum(bands: number): number[] {
+  const out = new Array<number>(bands).fill(0)
+  if (!analyser || !buf) return out
+  analyser.getByteFrequencyData(buf as Uint8Array<ArrayBuffer>)
+  const usable = Math.floor(buf.length / 3)
+  const per = Math.max(1, Math.floor((usable - 2) / bands))
+  for (let b = 0; b < bands; b++) {
+    let sum = 0
+    for (let i = 0; i < per; i++) sum += buf[2 + b * per + i] ?? 0
+    out[b] = Math.min(1, (sum / per / 255) * 1.8)
+  }
+  return out
+}
+
 /** Analyser fed from an <audio> element, so the orb reacts while JARVIS talks. */
 export function attachOutputAnalyser(el: HTMLAudioElement): () => number {
   const c = new AudioContext()

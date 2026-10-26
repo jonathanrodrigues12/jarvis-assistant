@@ -43,6 +43,13 @@ export type VoiceHandlers = {
   onWake: (trailing: string) => void
   /** The user has genuinely started talking. This is the barge-in trigger. */
   onSpeechStart: () => void
+  /**
+   * A voice has started, in any mode but deaf — the instant it is detected,
+   * before a word is transcribed. Unlike onSpeechStart this is not a barge-in
+   * and fires while he is idle or listening too; it is for things that should
+   * simply get out of the way of a voice, like music.
+   */
+  onVoice?: () => void
   /** Live transcript, for the caption under the reactor. */
   onPartial: (text: string) => void
   /** A complete, endpointed utterance. */
@@ -536,6 +543,7 @@ async function startElevenVoice(h: VoiceHandlers): Promise<Voice> {
       diag.mode = mode
       diag.sessions++
       if (mode === 'deaf') return
+      h.onVoice?.()
       // Standing down mid-thought throws the thought away with it. Otherwise
       // held text would surface as the opening of the *next* conversation.
       if (mode === 'wake') assemble.cancel()
@@ -758,6 +766,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
       }
       started = true
       if (mode === 'guard') barged = true
+      h.onVoice?.()
       h.onSpeechStart()
     }
     diag.dropped = ''

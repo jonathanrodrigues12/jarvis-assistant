@@ -15,13 +15,16 @@
  *   node bridge/server.mjs
  */
 
+// First, so every module below sees the settings in .env.local.
+import './env.mjs'
 import { WebSocketServer } from 'ws'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { displayServer } from './panels.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
-import { briefingConfig, briefingServer } from './briefing.mjs'
+import { briefingConfig, briefingServer, weather } from './briefing.mjs'
+import { systemStats } from './system.mjs'
 import { browserEnabled, browserServer } from './browser.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
@@ -29,18 +32,6 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { openRemote, proxyError, vetTarget, PROXY_UA } from './net.mjs'
 import { probeUrl, renderPage } from './page.mjs'
-
-/**
- * The bridge's own settings — ELEVENLABS_API_KEY, JARVIS_CITY and the rest — can
- * live in .env.local beside the app's, so nothing has to be exported by hand in
- * every shell. Variables already set in the environment win. The file is
- * gitignored (*.local), which is what makes it a safe home for a key.
- */
-try {
-  process.loadEnvFile(new URL('../.env.local', import.meta.url))
-} catch {
-  // No file is the normal case; everything here has a default.
-}
 
 const PORT = Number(process.env.JARVIS_BRIDGE_PORT ?? 8787)
 
@@ -763,6 +754,9 @@ function corsFor(req) {
   return headers
 }
 
+/** The weather card's last answer, so a HUD repaint is not an API call. */
+let weatherCache = null
+
 // One HTTP server for both the speech proxy and the WebSocket upgrade.
 const http = await import('node:http')
 
@@ -789,6 +783,26 @@ const handleRequest = async (req, res) => {
     const eleven = Boolean(elevenKey())
     res.writeHead(200, { ...cors, 'content-type': 'application/json' })
     return res.end(JSON.stringify({ ok: true, tts: eleven, stt: eleven }))
+  }
+
+  // Machine telemetry for the HUD gauges. See system.mjs.
+  if (req.method === 'GET' && req.url === '/system') {
+    res.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+    return res.end(JSON.stringify(await systemStats()))
+  }
+
+  // Today's weather for the HUD's weather card, refreshed every ten minutes.
+  if (req.method === 'GET' && req.url === '/weather') {
+    try {
+      if (!weatherCache || Date.now() - weatherCache.at > 10 * 60_000) {
+        weatherCache = { at: Date.now(), data: await weather(briefingConfig.city) }
+      }
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' })
+      return res.end(JSON.stringify(weatherCache.data))
+    } catch (err) {
+      res.writeHead(502, cors)
+      return res.end(String(err?.message ?? err))
+    }
   }
 
   // Serve local image files to the page. Screenshots and generated art land on

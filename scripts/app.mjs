@@ -10,6 +10,10 @@
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 
+import { vendorAssets } from './vendor.mjs'
+
+vendorAssets()
+
 const require = createRequire(import.meta.url)
 const electron = require('electron') // the path to the binary, from Node's side
 

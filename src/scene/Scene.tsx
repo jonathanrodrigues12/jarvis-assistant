@@ -13,6 +13,7 @@ import { Core } from './Core'
 import { Particles } from './Particles'
 import { Orbits } from './Orbits'
 import { Filaments } from './Filaments'
+import { Nucleus } from './Nucleus'
 import { ORB_STYLE } from '../config'
 import { useStore, phaseColor, accentFor, type Phase } from '../store'
 
@@ -187,7 +188,9 @@ function Rig() {
   // subject is one unbroken one.
   return (
     <>
-      {ORB_STYLE === 'filaments' ? (
+      {ORB_STYLE === 'nucleus' ? (
+        <Nucleus drive={drive} />
+      ) : ORB_STYLE === 'filaments' ? (
         // The filament ball stands on its own against the grid; the dust field
         // was a backdrop for the ring and only muddies the loops.
         <Filaments drive={drive} />
@@ -226,8 +229,8 @@ export function Scene() {
         add a <ToneMapping mode={ToneMappingMode.ACES_FILMIC} /> effect at the
         end of this chain rather than touching the renderer.
       */}
-      {ORB_STYLE === 'filaments' ? (
-        // Bloom alone. The filament orb sits on a CSS background seen through
+      {ORB_STYLE !== 'reactor' ? (
+        // Bloom alone. The filament orb (and the nucleus) sits on a CSS background seen through
         // a transparent canvas, and the lens effects below are written for an
         // opaque frame: aberration and noise darken the edges of every line
         // where alpha falls off, which turned glowing strands into black wire.

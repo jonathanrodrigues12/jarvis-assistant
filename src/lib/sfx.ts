@@ -13,7 +13,11 @@
  * this file is only the fallback for when that file isn't there.
  */
 
-type Cue = 'boot' | 'wake' | 'listen' | 'tool' | 'done' | 'error'
+type Cue =
+  | 'boot' | 'wake' | 'listen' | 'tool' | 'done' | 'error'
+  // The biometric gate (AuthGate.tsx). Overridable like the rest, as
+  // auth-tick.mp3, auth-granted.mp3 and auth-denied.mp3.
+  | 'auth-tick' | 'auth-granted' | 'auth-denied'
 
 let ctx: AudioContext | null = null
 let master: GainNode | null = null
@@ -79,7 +83,10 @@ export async function unlockAudio(): Promise<void> {
 
 /** Pick up any real audio files the user has dropped into public/audio/. */
 async function loadOverrides() {
-  const cues: Cue[] = ['boot', 'wake', 'listen', 'tool', 'done', 'error']
+  const cues: Cue[] = [
+    'boot', 'wake', 'listen', 'tool', 'done', 'error',
+    'auth-tick', 'auth-granted', 'auth-denied',
+  ]
   await Promise.all(
     cues.map(async (cue) => {
       if (samples.has(cue)) return
@@ -199,6 +206,28 @@ const synth: Record<Cue, () => void> = {
   error: () => {
     blip(320, { dur: 0.18, type: 'square', gain: 0.14 })
     blip(226, { at: 0.13, dur: 0.3, type: 'square', gain: 0.12 })
+  },
+
+  /** One step of the loading bar: a short, bright data blip. */
+  'auth-tick': () => {
+    blip(1760, { dur: 0.045, type: 'square', gain: 0.05 })
+    blip(2640, { at: 0.03, dur: 0.04, gain: 0.04 })
+  },
+
+  /** Identity confirmed: a sweep up into a clean major chord. */
+  'auth-granted': () => {
+    noise({ dur: 0.5, gain: 0.06, from: 600, to: 7000 })
+    blip(660, { dur: 0.25, gain: 0.16, sweepTo: 990 })
+    blip(990, { at: 0.18, dur: 0.5, gain: 0.15 })
+    blip(1245, { at: 0.26, dur: 0.55, gain: 0.12 })
+    blip(1485, { at: 0.34, dur: 0.7, gain: 0.12 })
+  },
+
+  /** Not recognised: two low, buzzing pulses. */
+  'auth-denied': () => {
+    blip(180, { dur: 0.22, type: 'sawtooth', gain: 0.16 })
+    blip(180, { at: 0.3, dur: 0.32, type: 'sawtooth', gain: 0.16 })
+    blip(90, { dur: 0.62, type: 'square', gain: 0.06 })
   },
 }
 

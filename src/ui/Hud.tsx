@@ -4,6 +4,7 @@ import { useStore, accentFor, type Phase } from '../store'
 import { Suggestions } from './Suggestions'
 import { BladeSweep, Blades } from './Blades'
 import { Deck } from './Deck'
+import { SideLeft, SideRight } from './SidePanels'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
@@ -152,7 +153,6 @@ export function Hud() {
   const caption = useStore((s) => s.caption)
   const turns = useStore((s) => s.turns)
   const activeTool = useStore((s) => s.activeTool)
-  const connected = useStore((s) => s.connected)
   const error = useStore((s) => s.error)
   const level = useStore((s) => s.level)
   const voice = useStore((s) => s.voice)
@@ -208,32 +208,16 @@ export function Hud() {
         </div>
       </header>
 
-      {/* Left rail: which integrations are live */}
+      {/* The columns either side of the orb: the world, the machine and the
+          room on the left; the day and the connected systems on the right.
+          They replace the old SISTEMAS and SINAL rails, whose contents now
+          live in cards (SidePanels.tsx). */}
       {ui.chrome.systems && (
-        <aside className="rail rail-left">
-          <div className="rail-title">SISTEMAS</div>
-          {connected.length === 0 && <div className="rail-item dim">nenhum conectado</div>}
-          {connected.map((c) => (
-            <div key={c} className="rail-item">
-              <span className="tick" />
-              {c}
-            </div>
-          ))}
-          <div className="rail-item">
-            <span className="tick" />
-            Web
-          </div>
-        </aside>
+        <>
+          <SideLeft />
+          <SideRight />
+        </>
       )}
-
-      {/* Right rail: live telemetry, mostly for flavour */}
-      <aside className="rail rail-right">
-        <div className="rail-title">SINAL</div>
-        <div className="meter">
-          <div className="meter-fill" style={{ height: `${level * 100}%` }} />
-        </div>
-        <div className="rail-item mono">{(level * 100).toFixed(0).padStart(3, '0')}%</div>
-      </aside>
 
       <AnimatePresence>
         {activeTool && ui.chrome.toolBadge && (
