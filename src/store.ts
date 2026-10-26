@@ -50,7 +50,18 @@ export type Blade = {
   mode?: 'reader' | 'live'
   size: 'compact' | 'tall' | 'wide' | 'full'
   hold: 'turn' | 'sticky'
+  /** Cards (compact markup) only: the small line over the title, e.g. "PANORAMA · CLIMA". */
+  kicker?: string
+  /** Cards only: a short pill at the top right, e.g. "HOJE" or "5 PARA AGIR". */
+  tag?: string
 }
+
+/**
+ * Compact composed markup — what the `display` tool sends — is a card for the
+ * deck under the orb rather than a blade on the stack. Everything else is a
+ * blade.
+ */
+export const isCard = (b: Blade) => b.kind === 'markup' && b.size === 'compact'
 
 export type Turn = {
   id: string
@@ -147,7 +158,7 @@ export const UI_DEFAULTS: UiState = {
   accent: null, background: null, palette: {},
   reactor: { color: null, scale: 1, intensity: 1, spin: 1, style: 'ring', visible: true },
   orbits: [],
-  chrome: { systems: true, transcript: true, toolBadge: true, suggestions: true, brand: true },
+  chrome: { systems: true, transcript: true, toolBadge: true, suggestions: true, brand: false },
   effect: null,
 }
 
@@ -417,14 +428,16 @@ export const useStore = create<State>((set) => ({
 
 /** Colour identity per phase — shared by the 3D scene and the 2D HUD. */
 export const phaseColor: Record<Phase, string> = {
-  offline: '#0d4a4a',
-  boot: '#17b3b3',
-  dormant: '#12908f',
-  waking: '#5cf2ef',
-  listening: '#19d8d2',
-  thinking: '#f0a93c',
-  tooling: '#a97bff',
-  speaking: '#3ef2a8',
+  // All blue, the way the reference interface is: the phases are told apart
+  // by brightness and a lean toward violet, not by changing hue family.
+  offline: '#123a7a',
+  boot: '#2f7dff',
+  dormant: '#2a6fe8',
+  waking: '#7cbcff',
+  listening: '#4d9eff',
+  thinking: '#6f8dff',
+  tooling: '#8a7dff',
+  speaking: '#3f9bff',
 }
 
 /**

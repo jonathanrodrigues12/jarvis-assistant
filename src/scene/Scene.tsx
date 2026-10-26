@@ -12,6 +12,8 @@ import * as THREE from 'three'
 import { Core } from './Core'
 import { Particles } from './Particles'
 import { Orbits } from './Orbits'
+import { Filaments } from './Filaments'
+import { ORB_STYLE } from '../config'
 import { useStore, phaseColor, accentFor, type Phase } from '../store'
 
 /** Rings spin harder while JARVIS is working — reads as effort. */
@@ -185,8 +187,16 @@ function Rig() {
   // subject is one unbroken one.
   return (
     <>
-      <Core drive={drive} />
-      <Particles drive={drive} />
+      {ORB_STYLE === 'filaments' ? (
+        // The filament ball stands on its own against the grid; the dust field
+        // was a backdrop for the ring and only muddies the loops.
+        <Filaments drive={drive} />
+      ) : (
+        <>
+          <Core drive={drive} />
+          <Particles drive={drive} />
+        </>
+      )}
       <Orbits />
     </>
   )
@@ -216,25 +226,42 @@ export function Scene() {
         add a <ToneMapping mode={ToneMappingMode.ACES_FILMIC} /> effect at the
         end of this chain rather than touching the renderer.
       */}
-      <EffectComposer multisampling={0}>
-        {/* Bloom is what turns additive lines into "hologram". */}
-        <Bloom
-          intensity={1.15}
-          // A higher threshold keeps the mid-tones intact so the orb doesn't
-          // flatten into a solid white disc.
-          luminanceThreshold={0.22}
-          luminanceSmoothing={0.85}
-          mipmapBlur
-          radius={0.72}
-        />
-        <ChromaticAberration
-          offset={new THREE.Vector2(0.0009, 0.0012)}
-          radialModulation={false}
-          modulationOffset={0}
-        />
-        <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} />
-        <Vignette eskil={false} offset={0.22} darkness={0.95} />
-      </EffectComposer>
+      {ORB_STYLE === 'filaments' ? (
+        // Bloom alone. The filament orb sits on a CSS background seen through
+        // a transparent canvas, and the lens effects below are written for an
+        // opaque frame: aberration and noise darken the edges of every line
+        // where alpha falls off, which turned glowing strands into black wire.
+        // The vignette is already drawn by the page.
+        <EffectComposer multisampling={0}>
+          <Bloom
+            intensity={1.6}
+            luminanceThreshold={0.12}
+            luminanceSmoothing={0.7}
+            mipmapBlur
+            radius={0.78}
+          />
+        </EffectComposer>
+      ) : (
+        <EffectComposer multisampling={0}>
+          {/* Bloom is what turns additive lines into "hologram". */}
+          <Bloom
+            intensity={1.15}
+            // A higher threshold keeps the mid-tones intact so the orb doesn't
+            // flatten into a solid white disc.
+            luminanceThreshold={0.22}
+            luminanceSmoothing={0.85}
+            mipmapBlur
+            radius={0.72}
+          />
+          <ChromaticAberration
+            offset={new THREE.Vector2(0.0009, 0.0012)}
+            radialModulation={false}
+            modulationOffset={0}
+          />
+          <Noise opacity={0.035} blendFunction={BlendFunction.OVERLAY} />
+          <Vignette eskil={false} offset={0.22} darkness={0.95} />
+        </EffectComposer>
+      )}
     </Canvas>
   )
 }

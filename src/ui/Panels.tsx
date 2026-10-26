@@ -163,7 +163,7 @@ const Card = memo(function Card({ panel }: { panel: Panel }) {
       {/* Sanitised above; `stagger` is handled in CSS so it applies to whatever
           children the model happened to author. */}
       {empty ? (
-        <p className="p-empty">no content returned</p>
+        <p className="p-empty">nenhum conteúdo retornado</p>
       ) : (
         <div
           ref={body}

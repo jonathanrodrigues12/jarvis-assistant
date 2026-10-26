@@ -1,4 +1,4 @@
-import { BRIDGE_HTTP_URL } from '../config'
+import { BRIDGE_HTTP_URL, SPEECH_LANG } from '../config'
 import { getMic } from './audio'
 import { speakingNow, speakingSince } from './tts'
 import { startVad, type Vad } from './vad'
@@ -78,12 +78,19 @@ const WAKE_DEBOUNCE = 1500
  * indication why. Better a rare false wake than a name that does not answer.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo)?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv)\b(?!'s)/i
+  /\b(?:hey|hi|ok|okay|yo|ei|oi|ol[aá])?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv|jarbas|jarves)\b(?!'s)|\bbom dia\b/i
+
+/**
+ * "Bom dia" wakes him too, and is itself the request — the morning briefing —
+ * so it is handed on whole rather than stripped like his name.
+ */
+const GREETING = /^bom dia\b/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {
   const m = WAKE.exec(text)
   if (!m) return ''
+  if (GREETING.test(m[0])) return text.slice(m.index).trim()
   return text
     .slice(m.index + m[0].length)
     .replace(/^[\s,.:;!?-]+/, '')
@@ -257,7 +264,7 @@ function makeAssembler(h: {
 const norm = (s: string) =>
   s
     .toLowerCase()
-    .replace(/[^a-z0-9' ]+/g, ' ')
+    .replace(/[^a-z0-9à-ÿ' ]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -267,7 +274,7 @@ const norm = (s: string) =>
  * would be the single most infuriating failure this file could have.
  */
 const OVERRIDE =
-  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no)\b/i
+  /\b(stop|wait|jarvis|cancel|enough|quiet|hold on|shut up|never ?mind|forget it|no|pare|espera|cancela|chega|sil[eê]ncio|esquece|deixa pra|n[aã]o)\b/i
 
 /**
  * Words too common to be evidence of anything.
@@ -284,7 +291,13 @@ const STOP = new Set(
     'our their what which who how why when where do does did can could would ' +
     'should will shall not no yes if then than as about into over under out up ' +
     'down one two three first second third now here there just very really got ' +
-    'get have has had say said tell me okay ok well right').split(' '),
+    'get have has had say said tell me okay ok well right ' +
+    // Portuguese, since that is what he now hears.
+    'o os as um uma uns umas e ou mas de do da dos das em no na nos nas por ' +
+    'pelo pela para pra com sem que se é foi ser está estão eu você ele ela ' +
+    'nós eles elas me te meu minha seu sua isso isto esse essa aquele qual ' +
+    'quem como quando onde porque sim não já agora aqui ali muito mais tá ' +
+    'então bom senhor').split(' '),
 )
 
 /**
@@ -760,7 +773,7 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     rec = new Ctor()
     rec.continuous = true
     rec.interimResults = true
-    rec.lang = 'en-GB'
+    rec.lang = SPEECH_LANG
     rec.onstart = () => {
       running = true
       diag.running = true

@@ -141,7 +141,23 @@ A short readout:
 const schema = {
   title: z
     .string()
-    .describe('Short heading for the panel, two to four words. e.g. "SEARCH RESULTS", "INBOX".'),
+    .describe(
+      'The card\'s headline, in Portuguese: the subject itself, short and in normal ' +
+        'case — e.g. "São Paulo", "Agenda livre", "Pedem sua atenção", "Tecnologia".',
+    ),
+  kicker: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe(
+      'Small uppercase line above the title naming the section, e.g. ' +
+        '"PANORAMA · CLIMA", "AGENDA · HOJE", "COMUNICAÇÕES · E-MAIL", "RADAR · NOTÍCIAS".',
+    ),
+  tag: z
+    .string()
+    .optional()
+    .catch(undefined)
+    .describe('Optional short pill at the top right, e.g. "AGORA", "3 PARA AGIR", "20 RECEBIDOS".'),
   html: z
     .string()
     .describe(
@@ -373,6 +389,8 @@ export function displayServer(emit, emitBlade) {
           html: args.html,
           size: args.slot === 'wide' ? 'wide' : 'compact',
           hold: args.hold ?? 'turn',
+          kicker: String(args.kicker ?? '').trim() || undefined,
+          tag: String(args.tag ?? '').trim() || undefined,
         })
         return { content: [{ type: 'text', text: 'On screen.' }] }
       }),

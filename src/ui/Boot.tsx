@@ -24,12 +24,12 @@ import { useStore } from '../store'
 const T = { rings: 2600, suit: 5200, reactor: 7200 }
 
 const LOG = [
-  'MOUNT F:/BACKUP/GHOST (HIDDEN)',
-  'EXTEND SYSTEM MEMORY .......... OK',
-  'TELEMETRY / COMP CLIMATION',
-  'REMOVE SYSTEM CONFIGURATION',
-  'CHECKSUM ...................... OK',
-  'RUN SYSTEM TOOL',
+  'MONTAR F:/BACKUP/GHOST (OCULTO)',
+  'EXPANDIR MEMÓRIA DO SISTEMA ... OK',
+  'TELEMETRIA / CALIBRAÇÃO',
+  'CARREGAR CONFIGURAÇÃO',
+  'VERIFICAÇÃO ................... OK',
+  'EXECUTAR FERRAMENTAS',
 ]
 
 type Stage = 'bar' | 'rings' | 'suit' | 'reactor'
@@ -78,7 +78,7 @@ export function Boot() {
         <div className={`boot-bar ${stage !== 'bar' ? 'boot-bar-dim' : ''}`}>
           <div className="boot-bar-frame">
             <span className="boot-bar-title">
-              INITIATING SYSTEM 1<span className="boot-dots">…</span>
+              INICIANDO SISTEMA 1<span className="boot-dots">…</span>
               <span className="boot-cursor" />
             </span>
             <div className="boot-seg">
@@ -201,8 +201,8 @@ function Suit({ reduced }: { reduced: boolean }) {
           />
         </motion.g>
       ))}
-      <text x="-150" y="34" className="boot-tag">RT / PWR</text>
-      <text x="150" y="34" className="boot-tag">DEP / MK</text>
+      <text x="-150" y="34" className="boot-tag">RT / ENRG</text>
+      <text x="150" y="34" className="boot-tag">IMP / MK</text>
     </svg>
   )
 }

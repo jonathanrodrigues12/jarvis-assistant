@@ -3,19 +3,20 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useStore, accentFor, type Phase } from '../store'
 import { Suggestions } from './Suggestions'
 import { BladeSweep, Blades } from './Blades'
+import { Deck } from './Deck'
 import { Effects } from './Effects'
 import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
 
 const statusText: Record<Phase, string> = {
-  offline: 'OFFLINE',
-  boot: 'INITIALISING',
-  dormant: 'STANDBY — SAY “HEY JARVIS”',
+  offline: 'DESLIGADO',
+  boot: 'INICIALIZANDO',
+  dormant: 'EM ESPERA — DIGA “JARVIS” OU “BOM DIA”',
   waking: 'ONLINE',
-  listening: 'LISTENING',
-  thinking: 'PROCESSING',
-  tooling: 'ACCESSING SYSTEMS',
-  speaking: 'RESPONDING',
+  listening: 'OUVINDO',
+  thinking: 'PROCESSANDO',
+  tooling: 'ACESSANDO SISTEMAS',
+  speaking: 'FALANDO',
 }
 
 function Corner({ at }: { at: 'tl' | 'tr' | 'bl' | 'br' }) {
@@ -196,7 +197,6 @@ export function Hud() {
         )}
 
         <div className="status">
-          <span className="dot" />
           <span className="status-text">
             {/* bootNote is the voice-model download readout. It is only ever
                 the right thing to show during boot — as a general fallback a
@@ -204,14 +204,15 @@ export function Hud() {
                 LISTENING and PROCESSING for the rest of the session. */}
             {phase === 'boot' && bootNote ? bootNote : statusText[phase]}
           </span>
+          <span className="status-rule" />
         </div>
       </header>
 
       {/* Left rail: which integrations are live */}
       {ui.chrome.systems && (
         <aside className="rail rail-left">
-          <div className="rail-title">SYSTEMS</div>
-          {connected.length === 0 && <div className="rail-item dim">none linked</div>}
+          <div className="rail-title">SISTEMAS</div>
+          {connected.length === 0 && <div className="rail-item dim">nenhum conectado</div>}
           {connected.map((c) => (
             <div key={c} className="rail-item">
               <span className="tick" />
@@ -227,7 +228,7 @@ export function Hud() {
 
       {/* Right rail: live telemetry, mostly for flavour */}
       <aside className="rail rail-right">
-        <div className="rail-title">SIGNAL</div>
+        <div className="rail-title">SINAL</div>
         <div className="meter">
           <div className="meter-fill" style={{ height: `${level * 100}%` }} />
         </div>
@@ -273,7 +274,7 @@ export function Hud() {
                 exit={{ opacity: 0 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 32 }}
               >
-                <span className="log-who">{t.role === 'user' ? 'YOU' : 'JARVIS'}</span>
+                <span className="log-who">{t.role === 'user' ? 'VOCÊ' : 'JARVIS'}</span>
                 {/* Only his half decodes. What the user said was never
                     transmitted from anywhere — dressing it up as machine
                     output would be a lie about where the words came from. */}
@@ -304,19 +305,32 @@ export function Hud() {
           the model had to make on grounds it could not know. Everything renders
           here now; Panels.tsx is unmounted rather than deleted so the design
           system it documents stays findable. */}
+      {/* Cards under the orb first, so a blade opened over them stays on top. */}
+      <Deck />
       <Blades />
 
       {ui.chrome.suggestions && <Suggestions />}
 
       {error && <div className="error">{error}</div>}
 
+      {/* The microphone, as the reference draws it: one ring at the foot of the
+          frame that lights while he is listening and pulses with your voice. */}
+      <div
+        className={`mic mic-${phase}`}
+        style={{ ['--lvl' as string]: phase === 'listening' || phase === 'waking' ? level : 0 }}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z" />
+        </svg>
+      </div>
+
       <footer className="hud-bottom">
         <span className="hint">
-          say <b>“hey jarvis”</b> · <kbd>Space</kbd> to talk · <kbd>G</kbd> hands
+          diga <b>“jarvis”</b> ou <b>“bom dia”</b> · <kbd>Espaço</kbd> para falar · <kbd>G</kbd> gestos
           {voice && (
             <>
               {' · '}
-              <kbd>V</kbd> voice: {voice.replace(/\(.*?\)/g, '').trim()}
+              <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
             </>
           )}
         </span>

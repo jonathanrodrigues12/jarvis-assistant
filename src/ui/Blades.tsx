@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useStore, type Blade } from '../store'
+import { useStore, isCard, type Blade } from '../store'
 import { BRIDGE_HTTP_URL } from '../config'
 import { sanitisePanelHtml } from './sanitise'
 import { frameSpan, peaceScroll, pinchCount } from '../lib/hands'
@@ -157,7 +157,8 @@ const CameraView = memo(function CameraView() {
   return <video ref={el} className="bl-camera" autoPlay playsInline muted />
 })
 
-const Body = memo(function Body({ blade }: { blade: Blade }) {
+/** Also what the deck's cards render through, so markup has one sanitised path. */
+export const Body = memo(function Body({ blade }: { blade: Blade }) {
   if (blade.kind === 'camera') return <CameraView />
 
   if (blade.kind === 'article' && blade.url) {
@@ -179,7 +180,7 @@ const Body = memo(function Body({ blade }: { blade: Blade }) {
 
   if (blade.kind === 'embed' && blade.url) {
     const embed = embedUrl(blade.url)
-    if (!embed) return <p className="bl-note">That video link could not be played.</p>
+    if (!embed) return <p className="bl-note">Não foi possível reproduzir esse vídeo.</p>
     return (
       <iframe
         className="bl-frame"
@@ -232,7 +233,7 @@ const Body = memo(function Body({ blade }: { blade: Blade }) {
     )
   }
 
-  return <p className="bl-note">Nothing to show.</p>
+  return <p className="bl-note">Nada para mostrar.</p>
 })
 
 /* -------------------------------------------------------------------- card */
@@ -536,7 +537,7 @@ function Card({
                   setSize(null)
                   setPos({ x: 0, y: 0 })
                 }}
-                title="Back where it started"
+                title="Voltar à posição original"
               >
                 ⤾
               </button>
@@ -557,7 +558,7 @@ function Card({
                 e.stopPropagation()
                 onClose()
               }}
-              title="Close (X)"
+              title="Fechar (X)"
             >
               ✕
             </button>
@@ -569,7 +570,7 @@ function Card({
         </div>
 
         {/* Resize grip. Absent while expanded, where the size is the point. */}
-        {!expanded && <span className="bl-grip" onPointerDown={onGrip} title="Drag to resize" />}
+        {!expanded && <span className="bl-grip" onPointerDown={onGrip} title="Arraste para redimensionar" />}
       </motion.section>
     </motion.div>
   )
@@ -593,7 +594,8 @@ export function Blades() {
    * that" a meaningful thing to ask for.
    */
   const ordered = useMemo(() => {
-    const newestFirst = [...blades].reverse()
+    // Cards belong to the deck under the orb (Deck.tsx), not to this stack.
+    const newestFirst = blades.filter((b) => !isCard(b)).reverse()
     if (!focusedBlade) return newestFirst
     const hit = newestFirst.findIndex((b) => b.id === focusedBlade)
     if (hit <= 0) return newestFirst
@@ -617,7 +619,7 @@ export function Blades() {
   // Bound here rather than in App, and only while something is open, so E and X
   // are free for anything else the moment the last blade closes.
   const live = useRef(false)
-  live.current = blades.length > 0
+  live.current = ordered.length > 0
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -644,7 +646,7 @@ export function Blades() {
     return () => window.removeEventListener('keydown', onKey)
   }, [front, expandedBlade, expandBlade, closeBlade, cycle])
 
-  if (!blades.length) return null
+  if (!ordered.length) return null
 
   return (
     <div className={`blades-stack${expandedBlade ? ' blades-stack-full' : ''}`}>
@@ -669,9 +671,9 @@ export function Blades() {
         })}
       </AnimatePresence>
 
-      {blades.length > 1 && !expandedBlade && (
+      {ordered.length > 1 && !expandedBlade && (
         <div className="bl-hint">
-          <kbd>[</kbd> <kbd>]</kbd> cycle · <kbd>E</kbd> full · <kbd>X</kbd> close
+          <kbd>[</kbd> <kbd>]</kbd> alternar · <kbd>E</kbd> tela cheia · <kbd>X</kbd> fechar
         </div>
       )}
     </div>

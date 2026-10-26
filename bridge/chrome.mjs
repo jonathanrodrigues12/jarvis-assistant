@@ -82,6 +82,19 @@ const CONNECT_TIMEOUT_MS = 3_000
  * accepted as a last resort, because on some setups it is all there is.
  */
 async function findSocket() {
+  // Windows has no /tmp socket. The native host listens on a named pipe, one
+  // per user and without a pid in the name, so there is nothing to choose
+  // between: it is either in the pipe namespace or the extension is not up.
+  if (process.platform === 'win32') {
+    const name = `claude-mcp-browser-bridge-${userInfo().username}`
+    try {
+      const pipes = await readdir('\\\\.\\pipe\\')
+      return pipes.includes(name) ? `\\\\.\\pipe\\${name}` : null
+    } catch {
+      return null
+    }
+  }
+
   let names
   try {
     names = await readdir(SOCKET_DIR)

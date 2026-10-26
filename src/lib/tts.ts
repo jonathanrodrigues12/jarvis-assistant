@@ -5,6 +5,7 @@ import {
   TTS_ENGINE,
   KOKORO_VOICE,
   BRIDGE_HTTP_URL,
+  SPEECH_LANG,
 } from '../config'
 import * as kokoro from './kokoro'
 import { caps } from './capabilities'
@@ -164,55 +165,51 @@ const MAX_UNSPOKEN = 220
 
 const VOICE_PREF_KEY = 'jarvis.voice'
 
+/** The language half of SPEECH_LANG, e.g. `pt`, for matching any regional voice. */
+const LANG_PREFIX = new RegExp(`^${SPEECH_LANG.split('-')[0]}`, 'i')
+const LANG_EXACT = new RegExp(`^${SPEECH_LANG.replace('-', '[-_]')}`, 'i')
+
 /**
- * Rank installed voices by how close they are to the character: a British
- * male, low and level, not a novelty voice.
+ * Rank installed voices by how close they are to the character: a Brazilian
+ * Portuguese male, low and level, not a novelty voice.
  *
- * The big win on macOS is the Enhanced/Premium variant of Daniel. The stock
- * "Daniel" is a compact voice from a decade ago and sounds it; the Enhanced
- * download is free (System Settings → Accessibility → Spoken Content → System
- * Voice → Manage Voices) and once installed it appears here automatically.
+ * On Windows the best free option is Edge's "Antonio Online (Natural)", which
+ * Edge exposes to speechSynthesis on its own. Chrome only sees the installed
+ * Windows voices, where "Daniel" is the Brazilian male — add it under Settings
+ * → Time & language → Speech if it is missing.
  */
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
-  // The macOS British male, and the closest thing to the character available
-  // without leaving the machine.
-  if (n.startsWith('daniel')) s += 100
-  else if (n.includes('google uk english male')) s += 85
-  else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
-  // Newer macOS en-GB male voices — casual, but serviceable.
-  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  if (/\bantonio\b/.test(n)) s += 100
+  else if (/\b(daniel|donato|fabio|julio|humberto|nicolau|valerio)\b/.test(n)) s += 80
 
-  // Higher-quality variants of whatever matched above.
-  if (n.includes('premium')) s += 30
+  // Neural voices are a different class from the compact ones.
+  if (/natural|neural|online|premium/.test(n)) s += 30
   else if (n.includes('enhanced')) s += 20
 
-  if (/en[-_]gb/i.test(v.lang)) s += 25
-  else if (/^en/i.test(v.lang)) s += 5
+  if (LANG_EXACT.test(v.lang)) s += 25
+  else if (LANG_PREFIX.test(v.lang)) s += 5
 
-  // Voices that clearly aren't a butler.
-  if (/grandma|grandpa|bubbles|jester|bells|boing|whisper|zarvox|superstar|trinoids|wobble|bahh|organ|cellos|bad news|good news/.test(n)) {
-    s -= 200
-  }
-  // Female-presenting names across the English sets.
-  if (/\b(flo|sandy|shelley|kate|serena|fiona|moira|karen|tessa|samantha|zoe|allison|ava|susan)\b/.test(n)) {
+  // Female-presenting names across the Portuguese sets.
+  if (/\b(francisca|thalita|maria|luciana|joana|brenda|elza|giovanna|leila|leticia|manuela|yara|raquel|fernanda)\b/.test(n)) {
     s -= 60
   }
 
   return s
 }
 
-/** Only voices that scored on a name match, not merely on being English —
- *  otherwise the picker cycles through a dozen US novelty voices. */
+/** Only voices that scored on a name match, not merely on the language — but
+ *  any voice in the language beats one that would read it with an accent, so
+ *  pickVoice falls back to those below. */
 const USABLE = 40
 
 /** Best-first list of usable voices — also what the voice picker cycles. */
 export function candidateVoices(): SpeechSynthesisVoice[] {
   return speechSynthesis
     .getVoices()
-    .filter((v) => /^en/i.test(v.lang))
+    .filter((v) => LANG_PREFIX.test(v.lang))
     .map((v) => ({ v, s: score(v) }))
     .filter((x) => x.s >= USABLE)
     .sort((a, b) => b.s - a.s)
@@ -236,7 +233,11 @@ function pickVoice(): SpeechSynthesisVoice | null {
     localStorage.removeItem(VOICE_PREF_KEY)
   }
 
-  cachedVoice = candidateVoices()[0] ?? all.find((v) => /^en/i.test(v.lang)) ?? null
+  cachedVoice =
+    candidateVoices()[0] ??
+    all.find((v) => LANG_EXACT.test(v.lang)) ??
+    all.find((v) => LANG_PREFIX.test(v.lang)) ??
+    null
   return cachedVoice
 }
 
@@ -477,7 +478,7 @@ export function createSpeaker(): Speaker {
       const u = new SpeechSynthesisUtterance(text)
       const voice = pickVoice()
       if (voice) u.voice = voice
-      u.lang = voice?.lang ?? 'en-GB'
+      u.lang = voice?.lang ?? SPEECH_LANG
       // Deliberate, and deliberately invariant — the character's pace does not
       // change with stakes, and that steadiness is most of the effect. This
       // lands around 130 wpm, below the median for film dialogue.

@@ -3,9 +3,12 @@
 :root {
   /* The interface cyan. `--accent` is re-declared per phase and per panel;
      this one stays put and is what anything neutral pins itself to. */
-  --interface: #00e5ff;
+  --interface: #4d9eff;
   --accent: var(--interface);
-  --bg: #01060c;
+  --bg: #04123a;
+  /* The blueprint grid behind everything. */
+  --grid: rgba(110, 160, 255, 0.075);
+  --grid-size: 46px;
   font-family: 'Chakra Petch', system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -23,7 +26,19 @@ body,
   overflow: hidden;
 }
 
-/* Faint scanlines + radial falloff so the 3D never sits on flat black. */
+/* Deep blue, lighter behind the orb, with a blueprint grid over it. Painted on
+   the body so the transparent canvas shows it through; #root is cleared so it
+   does not paint flat colour back over the top. */
+body {
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size),
+    radial-gradient(ellipse 70% 65% at 50% 46%, #12348a 0%, #0a2366 38%, #051540 72%, #030b26 100%);
+  background-color: var(--bg);
+}
+#root { background: transparent; }
+
+/* Faint scanlines + a soft falloff at the edges of the frame. */
 body::after {
   content: '';
   position: fixed;
@@ -31,11 +46,11 @@ body::after {
   pointer-events: none;
   z-index: 5;
   background:
-    radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(ellipse at center, transparent 45%, rgba(1, 6, 24, 0.55) 100%),
     repeating-linear-gradient(
       0deg,
-      rgba(0, 229, 255, 0.028) 0px,
-      rgba(0, 229, 255, 0.028) 1px,
+      rgba(120, 170, 255, 0.022) 0px,
+      rgba(120, 170, 255, 0.022) 1px,
       transparent 1px,
       transparent 3px
     );
@@ -100,16 +115,29 @@ body::after {
   opacity: 0.42;
 }
 
+/* Centred over the orb, letter-spaced, with a dotted rule under it — the way
+   the reference interface announces "FALANDO". Absolutely placed so the brand,
+   when it is shown, keeps the left of the header to itself. */
 .status {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  transform: translateX(-50%);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  font-size: 10px;
-  /* The header is space-between, so with the wordmark hidden the status line
-     would slide to the left edge on its own. Claiming the free space keeps it
-     pinned right whether or not the brand is there — and with both present it
-     changes nothing, since space-between had already used that space up. */
-  margin-left: auto;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.55em;
+  white-space: nowrap;
+  text-shadow: 0 0 16px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+.status-rule {
+  width: 150px;
+  height: 2px;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 80%, transparent) 0.8px, transparent 1.2px) 0 0 / 5px 2px;
+  opacity: 0.7;
 }
 
 .dot {
@@ -1896,3 +1924,168 @@ kbd {
   transform: scaleX(-1);
   background: #000;
 }
+
+/* ------------------------------------------------------------- the deck */
+
+/* Cards land in the middle, over the orb, and earlier ones settle into a row
+   underneath. See Deck.tsx. Both containers are flex-centred rather than
+   transformed so shared-layout animation can measure them. */
+.deck-focus {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: top 500ms ease, bottom 500ms ease;
+}
+.deck-focus-up {
+  top: 10vh;
+  bottom: 40vh;
+}
+
+.deck-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 61vh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 0 40px;
+  pointer-events: none;
+}
+
+.deck-card {
+  pointer-events: auto;
+  width: min(500px, 86vw);
+  max-height: 46vh;
+  overflow: hidden;
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(110, 170, 255, 0.36);
+  background:
+    linear-gradient(180deg, rgba(22, 48, 112, 0.82) 0%, rgba(9, 24, 66, 0.86) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(170, 210, 255, 0.14),
+    0 18px 50px rgba(1, 8, 32, 0.6),
+    0 0 34px rgba(60, 140, 255, 0.22);
+  backdrop-filter: blur(12px);
+  color: #dce8ff;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-size: 13px;
+}
+
+.deck-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.deck-icon {
+  flex: 0 0 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 175, 255, 0.4);
+  background: rgba(60, 120, 255, 0.14);
+  color: #9cc6ff;
+  font-size: 14px;
+}
+.deck-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.deck-kicker {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #8fb6ff;
+  opacity: 0.75;
+}
+.deck-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.deck-tag {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 175, 255, 0.45);
+  background: rgba(60, 120, 255, 0.16);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #bcd6ff;
+}
+
+/* The composed body sits in an inner well, as the reference cards do. */
+.deck-body .bl-markup {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(4, 14, 44, 0.45);
+  border: 1px solid rgba(110, 170, 255, 0.14);
+}
+.deck-card .hud-label { color: #ffffff; }
+.deck-card .hud-sub { color: #9fb9e8; }
+
+/* A card that has moved down into the row: the same card, smaller and dimmer,
+   cut off at a fixed height so the row stays one tidy line. */
+.deck-mini {
+  width: 190px;
+  max-height: 150px;
+  padding: 9px 10px 10px;
+  border-radius: 11px;
+  cursor: pointer;
+  opacity: 0.88;
+}
+.deck-mini:hover {
+  opacity: 1;
+  border-color: rgba(150, 195, 255, 0.6);
+}
+.deck-mini .deck-head { margin-bottom: 7px; gap: 7px; }
+.deck-mini .deck-icon { flex-basis: 18px; height: 18px; font-size: 10px; border-radius: 6px; }
+.deck-mini .deck-title { font-size: 11px; }
+.deck-mini .deck-kicker { font-size: 6.5px; }
+.deck-mini .deck-tag { display: none; }
+.deck-mini .deck-body { zoom: 0.62; }
+
+/* ------------------------------------------------------------------ mic */
+
+.mic {
+  position: absolute;
+  left: 50%;
+  bottom: 70px;
+  transform: translateX(-50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 28%, transparent), rgba(4, 18, 58, 0.6) 70%);
+  box-shadow:
+    0 0 calc(10px + var(--lvl, 0) * 40px) color-mix(in srgb, var(--accent) 60%, transparent),
+    0 0 0 calc(var(--lvl, 0) * 10px) color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: box-shadow 90ms linear, opacity 300ms ease;
+  opacity: 0.75;
+}
+.mic svg { width: 17px; height: 17px; fill: #d9e8ff; }
+.mic-listening,
+.mic-waking { opacity: 1; }
+.mic-offline,
+.mic-boot { opacity: 0; }

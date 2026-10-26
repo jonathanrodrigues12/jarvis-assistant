@@ -71,6 +71,12 @@ export const BACKEND: 'bridge' | 'direct' = choice(
  * `wss://` maps to `https://` on its own, which is why this is a prefix swap
  * rather than a hardcoded scheme.
  */
+/**
+ * The language he hears and speaks. Used for the browser recogniser and to pick
+ * a system voice; the bridge's persona and ElevenLabs are pinned to match.
+ */
+export const SPEECH_LANG = 'pt-BR'
+
 export const BRIDGE_WS_URL = str(import.meta.env.VITE_BRIDGE_URL) ?? 'ws://localhost:8787'
 export const BRIDGE_HTTP_URL = BRIDGE_WS_URL.replace(/^ws/, 'http')
 
@@ -126,6 +132,18 @@ export const KOKORO_VOICE = choice(
   import.meta.env.VITE_KOKORO_VOICE,
   ['bm_george', 'bm_fable', 'bm_lewis', 'bm_daniel'] as const,
   'bm_george',
+)
+
+/**
+ * The centrepiece.
+ *   'filaments' — a ball of glowing, breathing loops. The default.
+ *   'reactor'   — the original ring and its dust field.
+ */
+export const ORB_STYLE: 'filaments' | 'reactor' = choice(
+  'VITE_ORB',
+  import.meta.env.VITE_ORB,
+  ['filaments', 'reactor'] as const,
+  'filaments',
 )
 
 export const env = {

@@ -11,6 +11,14 @@ audience can see it (a description box is fine).
 | `ambient.mp3` | *Ossuary 6 – Air* | Low bed looping under the interface |
 | `work.mp3` | *Mechanolith* | Rises while a tool is running |
 
+## JARVIS 2.0: abertura em português
+
+`boot-music.mp3` agora traz a fala de abertura em português, gerada no
+ElevenLabs com a voz George (`eleven_multilingual_v2`) e montada sobre os
+efeitos eletrônicos do início e do fim da faixa original. A versão original em
+inglês está guardada em `boot-music-en.mp3`; para voltar a ela, copie-a por cima
+de `boot-music.mp3`.
+
 ## Attribution to paste into a video description
 
 ```

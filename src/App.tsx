@@ -63,11 +63,12 @@ const newId = () =>
 
 /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
  *  that woke him as "travis" gets that word sent on to the model as a question. */
-const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv)'
-/** A bare vocative — "Jarvis", "hey jarvis" — with nothing asked. */
-const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i')
-/** A leading vocative on a real command: "Jarvis, what's the weather". */
-const LEADING_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
+const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv|jarbas|jarves)'
+const PREFIX = '(?:hey|hi|ok|okay|yo|ei|oi|ol[aá])'
+/** A bare vocative — "Jarvis", "ei jarvis" — with nothing asked. */
+const BARE_NAME = new RegExp(`^${PREFIX}?\\s*${NAME}[\\s,.!?]*$`, 'i')
+/** A leading vocative on a real command: "Jarvis, como está o tempo". */
+const LEADING_NAME = new RegExp(`^${PREFIX}?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
 
 export default function App() {
   const store = useStore
@@ -454,11 +455,11 @@ export default function App() {
     // on screen still shows it. Better to say so than to let him quietly forget.
     watchConnection((state) => {
       if (state === 'lost') {
-        store.getState().setError('Bridge connection lost — reconnecting.')
+        store.getState().setError('Conexão com a bridge perdida — reconectando.')
       } else if (state === 'reconnected') {
         store
           .getState()
-          .setError('Bridge reconnected. The previous conversation was not kept.')
+          .setError('Bridge reconectada. A conversa anterior não foi mantida.')
       }
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
@@ -580,8 +581,8 @@ export default function App() {
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
 
-      // V auditions the next British voice installed on this machine. Which
-      // ones exist varies per Mac, so hearing them beats trusting a ranking.
+      // V auditions the next Portuguese voice installed on this machine. Which
+      // ones exist varies per machine, so hearing them beats trusting a ranking.
       // Bare V only — ⌘V and ⌃V are paste, and swallowing those was rude.
       if (
         e.key === 'v' &&
@@ -596,7 +597,7 @@ export default function App() {
         silence()
         const demo = createSpeaker()
         speaker.current = demo
-        demo.say(`Voice set to ${name.replace(/\(.*?\)/g, '').trim()}. At your service, sir.`)
+        demo.say(`Voz alterada para ${name.replace(/\(.*?\)/g, '').trim()}. Às suas ordens, senhor.`)
         void demo.end()
         return
       }
@@ -621,8 +622,8 @@ export default function App() {
                 .getState()
                 .setError(
                   err?.name === 'NotAllowedError'
-                    ? 'Camera access denied — gesture control is unavailable.'
-                    : `Gesture control failed to start: ${err?.message ?? err}`,
+                    ? 'Acesso à câmera negado — o controle por gestos está indisponível.'
+                    : `O controle por gestos falhou ao iniciar: ${err?.message ?? err}`,
                 )
             })
         }
@@ -638,7 +639,7 @@ export default function App() {
         silence()
         const t = createSpeaker()
         speaker.current = t
-        t.say('Audio test. If you can hear this, speech output is working, sir.')
+        t.say('Teste de áudio. Se o senhor está ouvindo isto, a voz está funcionando.')
         void t.end().then(() => {
           const d = (window as unknown as Record<string, Record<string, unknown>>).__tts
           console.info('[jarvis] audio test →', d)
