@@ -125,6 +125,26 @@ export function watchConnection(
   if (usingBridge) bridge.watchConnection(fn)
 }
 
+export type { Brain } from './bridge'
+
+/**
+ * Which model is answering — Claude or a local one through Ollama — as the
+ * bridge reports it on every connection. Bridge-only: the direct path calls the
+ * Claude API from the browser and has no local brain to switch to.
+ */
+export function watchBrain(fn: (b: { brain: bridge.Brain; model: string }) => void): void {
+  if (usingBridge) bridge.watchBrain(fn)
+}
+
+export function currentBrain(): bridge.Brain {
+  return usingBridge ? (bridge.currentBrain()?.brain ?? 'claude') : 'claude'
+}
+
+/** Switch brains. Starts a fresh session, so the conversation starts over. */
+export async function switchBrain(next: bridge.Brain): Promise<void> {
+  if (usingBridge) await bridge.setBrain(next)
+}
+
 /** Labels for the HUD's SYSTEMS rail. */
 export function connectedLabels(): string[] {
   return usingBridge ? bridge.bridgeServers() : direct.connectedLabels()

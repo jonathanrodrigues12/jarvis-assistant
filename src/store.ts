@@ -233,6 +233,8 @@ type State = {
   connected: string[]
   /** Name of the speech-synthesis voice in use, shown in the HUD. */
   voice: string
+  /** Which model is answering, shown in the HUD — 'Claude' or the local model. */
+  brain: string
   /** Whether the camera is on and hands are being tracked. Store-backed rather
    *  than read off the tracker, because the indicator has to re-render. */
   gestures: boolean
@@ -253,6 +255,7 @@ type State = {
   ui: UiState
 
   setVoice: (v: string) => void
+  setBrain: (b: string) => void
   setGestures: (on: boolean) => void
   setLooking: (why: string | null) => void
   setBootNote: (n: string) => void
@@ -292,6 +295,7 @@ export const useStore = create<State>((set) => ({
   error: null,
   connected: [],
   voice: '',
+  brain: '',
   gestures: false,
   looking: null,
   panels: [],
@@ -302,6 +306,7 @@ export const useStore = create<State>((set) => ({
   ui: defaultUi(),
 
   setVoice: (voice) => set({ voice }),
+  setBrain: (brain) => set({ brain }),
   setGestures: (gestures) => set({ gestures }),
   setLooking: (looking) => set({ looking }),
   setBootNote: (bootNote) => set({ bootNote }),

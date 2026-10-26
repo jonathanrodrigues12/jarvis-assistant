@@ -85,13 +85,15 @@ const WAKE_DEBOUNCE = 1500
  * indication why. Better a rare false wake than a name that does not answer.
  */
 const WAKE =
-  /\b(?:hey|hi|ok|okay|yo|ei|oi|ol[aá])?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv|jarbas|jarves)\b(?!'s)|\bbom dia\b/i
+  /\b(?:hey|hi|ok|okay|yo|ei|oi|ol[aá])?\s*(?:jarvis|jarvys|jervis|jarvis's|travis|jarviss|java's|jarv|jarbas|jarves)\b(?!'s)|\b(?:bom dia|boa tarde|boa noite)\b/i
 
 /**
- * "Bom dia" wakes him too, and is itself the request — the morning briefing —
- * so it is handed on whole rather than stripped like his name.
+ * "Bom dia" wakes him too, and is itself the request — the briefing — so it is
+ * handed on whole rather than stripped like his name. "Boa tarde" and "boa
+ * noite" are the same request later in the day. Kept in step with GREETING in
+ * bridge/server.mjs.
  */
-const GREETING = /^bom dia\b/i
+const GREETING = /^(?:bom dia|boa tarde|boa noite)\b/i
 
 /** Everything after the wake phrase, which is usually the actual command. */
 function afterWake(text: string): string {

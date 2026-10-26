@@ -136,8 +136,42 @@ async function devices({ fresh = false } = {}) {
     online: d.online,
     status: Object.fromEntries((d.status ?? []).map((s) => [s.code, s.value])),
   }))
+  await nameChannels(list)
   deviceCache = { at: Date.now(), list }
   return list
+}
+
+/**
+ * The names the user gave each key in Smart Life — "Spot", "Led", "Principal".
+ *
+ * The device listing does not carry them; only the device shadow does, one
+ * call per device. They change about never, so they are fetched once an hour
+ * per switch and kept, and a failure just leaves the keys numbered.
+ */
+const channelNames = new Map() // id -> { at, names: { switch_1: 'Spot', ... } }
+const NAMES_TTL_MS = 60 * 60_000
+
+async function nameChannels(list) {
+  await Promise.all(
+    list.map(async (d) => {
+      const codes = switchCodes(d).filter((c) => c !== 'switch_led')
+      if (!codes.length) return
+      const known = channelNames.get(d.id)
+      if (!known || Date.now() - known.at > NAMES_TTL_MS) {
+        try {
+          const r = await call('GET', `/v2.0/cloud/thing/${d.id}/shadow/properties`)
+          const names = {}
+          for (const p of r.properties ?? []) {
+            if (SWITCH_CODE.test(p.code) && p.custom_name?.trim()) names[p.code] = p.custom_name.trim()
+          }
+          channelNames.set(d.id, { at: Date.now(), names })
+        } catch {
+          if (!known) channelNames.set(d.id, { at: Date.now(), names: {} })
+        }
+      }
+      d.channels = channelNames.get(d.id)?.names ?? {}
+    }),
+  )
 }
 
 const SWITCH_CODE = /^switch(_\d+)?$/
@@ -158,8 +192,15 @@ function describe(d) {
     tipo: isLight(d) ? 'luz' : codes.length ? 'interruptor' : d.category,
     online: d.online,
   }
-  if (codes.length === 1) out.ligado = Boolean(s[codes[0]])
-  else if (codes.length > 1) out.canais = codes.map((c, i) => ({ canal: i + 1, ligado: Boolean(s[c]) }))
+  if (isLight(d)) out.ligado = Boolean(s.switch_led)
+  else if (codes.length) {
+    out.ligado = codes.some((c) => Boolean(s[c]))
+    out.canais = codes.map((c, i) => ({
+      canal: i + 1,
+      nome: d.channels?.[c] ?? `Tecla ${i + 1}`,
+      ligado: Boolean(s[c]),
+    }))
+  }
   if (isLight(d)) {
     const m = lightModel(d)
     // In colour mode the brightness that counts is the colour's own.
@@ -168,8 +209,21 @@ function describe(d) {
     const max = inColour ? m.colourMax : m.brightMax
     if (b !== undefined) out.brilho = Math.round((b / max) * 100)
     if (s.work_mode) out.modo = s.work_mode === 'colour' ? 'cor' : s.work_mode === 'white' ? 'branco' : s.work_mode
+    if (inColour) out.cor = hex(m.colour.h, m.colour.s / m.colourMax)
   }
   return out
+}
+
+/** Hue and saturation to a full-brightness hex, for the swatch on the HUD. */
+function hex(h, sat) {
+  const f = (n) => {
+    const k = (n + h / 60) % 6
+    const v = 1 - sat * Math.max(0, Math.min(k, 4 - k, 1))
+    return Math.round(v * 255)
+      .toString(16)
+      .padStart(2, '0')
+  }
+  return `#${f(5)}${f(3)}${f(1)}`
 }
 
 /**
@@ -295,7 +349,51 @@ export async function listHome() {
   return (await devices({ fresh: true })).map(describe)
 }
 
+/**
+ * The house for the HUD panel. From the cache, so a page polling every few
+ * seconds costs the Tuya quota one listing a minute; commands JARVIS sends
+ * update the cache as they go, so his own changes show at once.
+ */
+export async function homeSnapshot() {
+  const list = await devices()
+  return {
+    atualizado: deviceCache?.at ?? Date.now(),
+    dispositivos: list.map((d) => ({ id: d.id, ...describe(d) })),
+  }
+}
+
+/**
+ * "spot da sala", "principal da cozinha": a key by the name the user gave it,
+ * with or without the room. Returns [{ d, code }] or nothing when the words
+ * name no key.
+ */
+function matchKeys(list, query) {
+  const q = fold(query)
+  const hits = []
+  for (const d of list) {
+    for (const [code, name] of Object.entries(d.channels ?? {})) {
+      const word = fold(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (!new RegExp(`\\b${word}\\b`).test(q)) continue
+      hits.push({ d, code, room: q.includes(fold(d.name)) })
+    }
+  }
+  const inRoom = hits.filter((h) => h.room)
+  return inRoom.length ? inRoom : hits.length === 1 ? hits : []
+}
+
 export async function setPower(query, on, channel) {
+  const list = await devices()
+  // A device's exact name wins over a key name inside it: "Led Sala" is the
+  // strip, not the "Led" key on the Sala switch.
+  const exact = list.some((d) => fold(d.name) === fold(query))
+  if (!channel && !exact) {
+    const keys = matchKeys(list, query)
+    if (keys.length) {
+      const byDevice = new Map()
+      for (const k of keys) byDevice.set(k.d, [...(byDevice.get(k.d) ?? []), k.code])
+      return each([...byDevice.keys()], query, (d) => byDevice.get(d).map((code) => ({ code, value: on })))
+    }
+  }
   const found = await resolve(query)
   return each(found, query, (d) => {
     let codes = switchCodes(d)
@@ -396,7 +494,9 @@ export const homeTools = [
     description:
       'Liga ou desliga um interruptor ou luz pelo nome, como aparece no Smart Life. ' +
       'O nome pode ser parcial ("sala"); "tudo" age sobre a casa inteira. Num ' +
-      'interruptor de várias teclas, sem canal liga ou desliga todas.',
+      'interruptor de várias teclas, sem canal liga ou desliga todas. As teclas têm ' +
+      'nome próprio (veja home_list): "spot da sala" ou "principal da cozinha" vai ' +
+      'como device e aciona só aquela tecla.',
     params: {
       device: z.string().describe('Nome do dispositivo, parcial serve, ou "tudo".'),
       on: z.boolean().describe('true liga, false desliga.'),

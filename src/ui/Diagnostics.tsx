@@ -84,6 +84,7 @@ export function Diagnostics() {
   const w = window as unknown as Record<string, unknown>
   const v = (w.__voice ?? {}) as Partial<VoiceDiag>
   const t = (w.__tts ?? {}) as Partial<TtsDiag>
+  const c = (w.__camera ?? {}) as { open?: boolean; resolution?: string; lastError?: string }
 
   // The two verdicts worth stating outright, rather than making you infer them
   // from the numbers underneath.
@@ -127,6 +128,11 @@ export function Diagnostics() {
       <Row k="failures" v={String(t.failures ?? 0)} bad={(t.failures ?? 0) > 0} />
       <Row k="cloud rescues" v={String(t.rescued ?? 0)} />
       <Row k="error" v={t.lastError || '—'} bad={Boolean(t.lastError)} />
+
+      <div className="diag-sec">CAMERA</div>
+      <Row k="state" v={c.open ? 'open' : 'closed'} />
+      <Row k="resolution" v={c.resolution || '—'} />
+      <Row k="error" v={c.lastError || '—'} bad={Boolean(c.lastError)} />
     </div>
   )
 }

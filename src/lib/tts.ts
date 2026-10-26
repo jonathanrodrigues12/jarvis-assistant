@@ -63,7 +63,7 @@ const ECHO_TAIL_MS = 1800
  * indistinguishable. This tells them apart at a glance.
  */
 export const diag = {
-  engine: 'system' as 'system' | 'kokoro' | 'elevenlabs',
+  engine: 'system' as 'system' | 'kokoro' | 'piper' | 'elevenlabs',
   /** Utterances handed to an engine — the OS voice or an audio element. */
   spoken: 0,
   /**
@@ -245,24 +245,47 @@ function pickVoice(): SpeechSynthesisVoice | null {
  *  always naming a speechSynthesis voice that a cloud or neural engine has
  *  quietly replaced. */
 export function currentVoiceName(): string {
-  if (USE_ELEVENLABS || caps().tts) return 'ElevenLabs'
-  if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
+  if (usePiper()) return PIPER_LABEL
+  if (useCloud()) return ELEVEN_LABEL
+  if (!enginePref() && TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
     return KOKORO_VOICE.replace(/^bm_/, '')
   }
   return pickVoice()?.name ?? 'default'
 }
 
-/** Step to the next candidate — lets you audition voices on your own machine
- *  rather than trusting a ranking to be right about how they sound. */
+const PIPER_LABEL = 'Piper'
+const ELEVEN_LABEL = 'ElevenLabs'
+
+/**
+ * Step to the next candidate — lets you audition voices on your own machine
+ * rather than trusting a ranking to be right about how they sound.
+ *
+ * The engines that are actually reachable sit in the same loop as the system
+ * voices, so V is the one control for all of them. Picking one is saved as an
+ * explicit engine choice, which outranks VITE_TTS_ENGINE and the automatic
+ * ElevenLabs upgrade — otherwise choosing a system voice would change nothing
+ * audible on a machine with a key.
+ */
 export function cycleVoice(): string {
-  const list = candidateVoices()
-  if (!list.length) return 'default'
-  const now = pickVoice()
-  const i = list.findIndex((v) => v.name === now?.name)
-  const next = list[(i + 1) % list.length]
-  localStorage.setItem(VOICE_PREF_KEY, next.name)
-  cachedVoice = next
-  return next.name
+  const options = [
+    ...(piperReady() ? [PIPER_LABEL] : []),
+    ...(caps().tts ? [ELEVEN_LABEL] : []),
+    ...candidateVoices().map((v) => v.name),
+  ]
+  if (!options.length) return 'default'
+  const i = options.indexOf(currentVoiceName())
+  const next = options[(i + 1) % options.length]
+
+  if (next === PIPER_LABEL) {
+    localStorage.setItem(ENGINE_PREF_KEY, 'piper')
+  } else if (next === ELEVEN_LABEL) {
+    localStorage.setItem(ENGINE_PREF_KEY, 'elevenlabs')
+  } else {
+    localStorage.setItem(ENGINE_PREF_KEY, 'system')
+    localStorage.setItem(VOICE_PREF_KEY, next)
+    cachedVoice = speechSynthesis.getVoices().find((v) => v.name === next) ?? undefined
+  }
+  return next
 }
 
 // Voices load asynchronously in Chrome; the first call usually returns nothing.
@@ -374,12 +397,16 @@ export function createSpeaker(): Speaker {
 
   /** null means "no audio pipeline, use the system voice directly". */
   function synthesise(text: string): Promise<string | null> | null {
+    if (usePiper()) {
+      diag.engine = 'piper'
+      return fetchPiperAudio(text).catch(() => null)
+    }
     // Prefer the ElevenLabs voice whenever the bridge reports it is available —
     // for a demo the timbre is worth the round trip, and this is what makes the
     // premium path automatic with no flag to set. It falls back to the browser
     // voice on any failure, so a student without a key still hears him speak.
     // `nativeBroken` latches on once the system voice has proved unusable.
-    if (USE_ELEVENLABS || caps().tts || nativeBroken) {
+    if (useCloud()) {
       // Recorded at the moment the tier is chosen rather than only when the
       // native voice latches over. Without this the panel reported 'system'
       // for a session that had spoken every one of its sentences through
@@ -388,7 +415,7 @@ export function createSpeaker(): Speaker {
       diag.engine = 'elevenlabs'
       return fetchCloudAudio(text).catch(() => null)
     }
-    if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
+    if (!enginePref() && TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
       diag.engine = 'kokoro'
       return kokoro.speak(text).catch(() => null)
     }
@@ -592,7 +619,8 @@ export function createSpeaker(): Speaker {
       // see the onplaying handler below.
       diag.spoken++
       diag.lastText = text.slice(0, 60)
-      diag.voice = diag.engine === 'kokoro' ? KOKORO_VOICE : 'ElevenLabs'
+      diag.voice =
+        diag.engine === 'kokoro' ? KOKORO_VOICE : diag.engine === 'piper' ? 'Piper' : 'ElevenLabs'
 
       let read: (() => number) | null = null
       const ctx = outputContext()
@@ -664,7 +692,11 @@ export function createSpeaker(): Speaker {
     },
     push(delta) {
       if (cancelled) return
-      buffer += delta
+      // "eleito.O mercado" — two sentences glued with no space — is read as
+      // "eleito ponto o mercado", and the splitter below, which wants a space
+      // after the stop, never cuts it either. Only before a capital, so "2.9"
+      // and "e.g." are left alone.
+      buffer = (buffer + delta).replace(/([.!?])(?=[A-ZÀ-Ý])/g, '$1 ')
 
       // Drain every complete sentence sitting in the buffer.
       for (;;) {
@@ -734,6 +766,59 @@ export function createSpeaker(): Speaker {
       settleDrained()
     },
     level: () => outLevel,
+  }
+}
+
+/**
+ * Piper failures latch after this many in a row, the same way Kokoro's do: one
+ * is worth retrying (the bridge restarts a dead piper process on the next
+ * request), a run of them means the system voice is the better bet.
+ */
+const PIPER_MAX_FAILURES = 3
+let piperFailures = 0
+
+/** An engine picked with V. Outranks the env defaults until another is picked. */
+const ENGINE_PREF_KEY = 'jarvis.engine'
+type EnginePref = 'piper' | 'elevenlabs' | 'system'
+
+function enginePref(): EnginePref | null {
+  const v = localStorage.getItem(ENGINE_PREF_KEY)
+  return v === 'piper' || v === 'elevenlabs' || v === 'system' ? v : null
+}
+
+function piperReady(): boolean {
+  return BACKEND === 'bridge' && caps().piper && piperFailures < PIPER_MAX_FAILURES
+}
+
+/** Piper is an explicit choice, so it outranks the automatic ElevenLabs
+ *  upgrade — only a forced VITE_USE_ELEVENLABS beats it. */
+function usePiper(): boolean {
+  if (!piperReady()) return false
+  const pref = enginePref()
+  return pref ? pref === 'piper' : !USE_ELEVENLABS && TTS_ENGINE === 'piper'
+}
+
+function useCloud(): boolean {
+  if (nativeBroken) return true
+  const pref = enginePref()
+  return pref ? pref === 'elevenlabs' : USE_ELEVENLABS || caps().tts
+}
+
+async function fetchPiperAudio(text: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${BRIDGE_HTTP_URL}/tts/piper`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+    piperFailures = 0
+    return URL.createObjectURL(await res.blob())
+  } catch (err) {
+    piperFailures++
+    diag.lastError = `piper: ${String((err as Error)?.message ?? err)}`
+    console.error('[jarvis] piper generation failed:', err)
+    return null
   }
 }
 

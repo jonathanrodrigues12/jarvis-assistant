@@ -23,10 +23,29 @@ import { displayServer } from './panels.mjs'
 import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
-import { briefingConfig, briefingServer, weather } from './briefing.mjs'
-import { homeConfig, homeServer } from './home.mjs'
+import {
+  briefingConfig,
+  briefingCards,
+  briefingServer,
+  cachedWeather,
+  morningContext,
+  warmBriefing,
+} from './briefing.mjs'
+import { homeConfig, homeServer, homeSnapshot } from './home.mjs'
 import { systemStats } from './system.mjs'
 import { browserEnabled, browserServer } from './browser.mjs'
+import { PIPER_VOICE, piperAvailable, piperSpeak, warmPiper } from './piper.mjs'
+import {
+  DEFAULT_BRAIN,
+  LOCAL_PROMPT,
+  localScreenServer,
+  OLLAMA_ALL_TOOLS,
+  OLLAMA_MODEL,
+  OLLAMA_URL,
+  ollamaOptions,
+  ollamaReady,
+  startOllamaProxy,
+} from './ollama.mjs'
 import { homedir, tmpdir } from 'node:os'
 import { readFileSync, realpathSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -288,6 +307,10 @@ function decideTool(name) {
     // The briefing sources only ever read public weather and headlines.
     if (server === 'briefing') return true
 
+    // The local brain's camera and close controls — the same things the ui
+    // and blade tools already do freely for Claude.
+    if (server === 'screen') return true
+
     // The house. Switching a light is effectful, but it is the whole reason
     // the user set this server up, and it is only built when they did — the
     // Tuya keys in .env.local are the consent. The worst a misheard command
@@ -369,28 +392,39 @@ Somente prosa falada. Sem markdown, sem listas, sem títulos, sem emoji, sem
 asteriscos. Escreva números, datas e horas como se fala: "oito e quinze",
 "primeiro de agosto", "vinte e seis graus" — nunca "8:15", "01/08" ou "26°C".
 
-BOM DIA — O BRIEFING MATINAL. Quando o usuário disser "bom dia" (sozinho ou com
-seu nome), faça o briefing completo, sem perguntar se ele quer:
-1. Chame get_now. Cumprimente em uma frase curta, de acordo com a hora real
-   ("Bom dia, senhor." de manhã; se já for tarde ou noite, cumprimente certo,
-   com um toque seco, sem corrigi-lo explicitamente).
-2. Clima: get_weather. Mostre um painel e fale a cidade, a mínima, a máxima e a
-   chance de chuva numa frase só.
-3. Agenda: se houver uma ferramenta de calendário (um servidor MCP de agenda ou
+BOM DIA — O BRIEFING. Quando o usuário disser "bom dia", "boa tarde" ou "boa
+noite" (sozinho ou com seu nome), faça o briefing completo, sem perguntar se ele
+quer. É o mesmo briefing a qualquer hora; só o cumprimento muda.
+COMECE A FALAR IMEDIATAMENTE. A mensagem dele já chega com a hora e o clima
+anexados em [contexto do briefing]; use esses dados e NÃO chame get_now nem
+get_weather (só chame get_weather se o clima vier vazio). O campo
+agora.cumprimento diz qual cumprimento usar ("Bom dia", "Boa tarde" ou "Boa
+noite"): use exatamente esse, mesmo que ele tenha dito outro. O usuário não pode
+esperar em silêncio enquanto você junta tudo: fale uma etapa, depois busque a
+próxima, fale, e assim por diante. Nunca chame as ferramentas de todas as etapas
+de uma vez antes de falar.
+1. Sua PRIMEIRA saída é texto, antes de qualquer ferramenta: o cumprimento de
+   agora.cumprimento (se ele disse "bom dia" à tarde, responda "Boa tarde,
+   senhor." com um toque seco, sem corrigi-lo explicitamente) seguido, na mesma
+   fala, do clima: a cidade, a mínima, a máxima e a chance de
+   chuva numa frase só. Depois de falar, mostre o painel do clima.
+2. Agenda: se houver uma ferramenta de calendário (um servidor MCP de agenda ou
    o Google Agenda aberto no Chrome dele), veja os compromissos de hoje, mostre
    um painel e diga quantos são e o primeiro. Se não houver como ver a agenda,
    pule esta etapa em silêncio.
-4. E-mail: se houver uma ferramenta de e-mail (um servidor MCP ou o Gmail no
+3. E-mail: se houver uma ferramenta de e-mail (um servidor MCP ou o Gmail no
    Chrome dele), veja a caixa de entrada, mostre um painel com os que exigem
    ação e diga quantos são e o mais importante. Somente leitura: nunca envie,
    apague ou marque nada. Sem ferramenta, pule em silêncio.
-5. Notícias: get_news uma vez por tema de interesse, com max de 2 ou 3. Um
-   painel por tema, com a fonte como tag. Fale uma manchete por tema, em uma
-   frase, citando o veículo.
-6. Feche com uma frase curta, por exemplo perguntando se ele quer detalhes de
+4. Notícias: get_news uma vez por tema de interesse, com max de 3. Um tema por
+   vez: busque, fale a manchete em uma frase citando o veículo, mostre o painel
+   com a fonte como tag, e só então passe ao próximo tema.
+5. Feche com uma frase curta, por exemplo perguntando se ele quer detalhes de
    algum item.
-Mostre o painel de cada etapa ANTES de falar dela, e fale cada etapa em no
-máximo duas frases. O briefing todo deve caber em cerca de um minuto falado.
+Em cada etapa, fale primeiro e mostre o painel logo em seguida: o painel aparece
+enquanto a frase ainda está tocando, e ninguém espera por ele. Fale cada etapa
+em no máximo duas frases. O briefing todo deve caber em cerca de um minuto
+falado.
 Os painéis do briefing são cards: use display com slot "right", um card por
 etapa, sempre com kicker e title. Exemplos: kicker "PANORAMA · CLIMA" e title
 com o nome da cidade; kicker "AGENDA · HOJE" e title "Agenda livre" ou "3
@@ -765,9 +799,6 @@ function corsFor(req) {
   return headers
 }
 
-/** The weather card's last answer, so a HUD repaint is not an API call. */
-let weatherCache = null
-
 // One HTTP server for both the speech proxy and the WebSocket upgrade.
 const http = await import('node:http')
 
@@ -791,9 +822,20 @@ const handleRequest = async (req, res) => {
     // with a key the app transcribes with Scribe and speaks with ElevenLabs;
     // without one it falls back to the browser's own recogniser and voice, so a
     // student with nothing configured still has a working assistant.
+    // `piper` is reported separately: it is a local voice the browser opts into
+    // with VITE_TTS_ENGINE=piper, not something to switch to automatically.
     const eleven = Boolean(elevenKey())
     res.writeHead(200, { ...cors, 'content-type': 'application/json' })
-    return res.end(JSON.stringify({ ok: true, tts: eleven, stt: eleven }))
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        tts: eleven,
+        stt: eleven,
+        piper: piperAvailable(),
+        ollama: await ollamaReady(),
+        ollamaModel: OLLAMA_MODEL,
+      }),
+    )
   }
 
   // Machine telemetry for the HUD gauges. See system.mjs.
@@ -802,14 +844,29 @@ const handleRequest = async (req, res) => {
     return res.end(JSON.stringify(await systemStats()))
   }
 
+  // The house for the HUD's home card. home.mjs caches the Tuya listing for a
+  // minute, so polling this often costs the cloud quota nothing extra.
+  if (req.method === 'GET' && req.url === '/home') {
+    if (!homeConfig.enabled) {
+      res.writeHead(404, cors)
+      return res.end('home off')
+    }
+    try {
+      const snap = await homeSnapshot()
+      res.writeHead(200, { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' })
+      return res.end(JSON.stringify(snap))
+    } catch (err) {
+      res.writeHead(502, cors)
+      return res.end(String(err?.message ?? err))
+    }
+  }
+
   // Today's weather for the HUD's weather card, refreshed every ten minutes.
   if (req.method === 'GET' && req.url === '/weather') {
     try {
-      if (!weatherCache || Date.now() - weatherCache.at > 10 * 60_000) {
-        weatherCache = { at: Date.now(), data: await weather(briefingConfig.city) }
-      }
+      const data = await cachedWeather()
       res.writeHead(200, { ...cors, 'content-type': 'application/json' })
-      return res.end(JSON.stringify(weatherCache.data))
+      return res.end(JSON.stringify(data))
     } catch (err) {
       res.writeHead(502, cors)
       return res.end(String(err?.message ?? err))
@@ -932,6 +989,46 @@ const handleRequest = async (req, res) => {
            String(err?.message ?? 'unknown error').replace(/[<&]/g, '')
          }`,
       )
+    }
+  }
+
+  // Local speech via Piper. Same body shape as /tts, returns a WAV.
+  if (req.method === 'POST' && req.url === '/tts/piper') {
+    if (!piperAvailable()) {
+      res.writeHead(503, cors)
+      return res.end('piper not installed')
+    }
+    let body = ''
+    for await (const chunk of req) {
+      body += chunk
+      if (body.length > 64 * 1024) {
+        req.destroy()
+        res.writeHead(400, cors)
+        return res.end('body too large')
+      }
+    }
+    let text
+    try {
+      ;({ text } = JSON.parse(body || '{}'))
+    } catch {
+      res.writeHead(400, cors)
+      return res.end('bad json')
+    }
+    if (!text) {
+      res.writeHead(400, cors)
+      return res.end('no text')
+    }
+    try {
+      const wav = await piperSpeak(text)
+      res.writeHead(200, {
+        ...cors,
+        'content-type': 'audio/wav',
+        'cache-control': 'no-cache',
+      })
+      return res.end(wav)
+    } catch (err) {
+      res.writeHead(502, cors)
+      return res.end(String(err?.message ?? err))
     }
   }
 
@@ -1145,7 +1242,28 @@ console.log(
         : 'using browser fallback voice'
   }`,
 )
+console.log(
+  piperAvailable()
+    ? `[jarvis] piper ready · voice ${PIPER_VOICE} (VITE_TTS_ENGINE=piper to use it)`
+    : '[jarvis] piper not installed — see piper/ in the README',
+)
+warmPiper()
+// Weather and headlines kept in memory so "bom dia" never waits on the network:
+// fetched now, and again before each ten-minute cache entry runs out.
+void warmBriefing()
+setInterval(() => void warmBriefing(), 9 * 60_000).unref()
 console.log(`[jarvis] model ${MODEL} · effort ${EFFORT}`)
+await startOllamaProxy().catch((err) =>
+  console.warn('[jarvis] ollama proxy failed to start:', err.message),
+)
+void ollamaReady().then((ok) =>
+  console.log(
+    ok
+      ? `[jarvis] ollama ready · ${OLLAMA_MODEL} at ${OLLAMA_URL}` +
+          (DEFAULT_BRAIN === 'ollama' ? ' (default brain)' : ' (press M on the HUD to switch)')
+      : `[jarvis] ollama unavailable — start it and run \`ollama pull ${OLLAMA_MODEL}\``,
+  ),
+)
 console.log(
   browserEnabled
     ? `[jarvis] in-app browser on DevTools port ${process.env.JARVIS_BROWSER_CDP}`
@@ -1186,6 +1304,15 @@ console.log(
  * What to tell the browser when a turn ends badly. Plain sentences, because
  * whatever reaches the client is liable to be spoken.
  */
+/**
+ * The greeting that asks for the briefing — any hour, optionally after his
+ * name. Kept in step with GREETING in src/lib/voice.ts.
+ */
+const GREETING = /^\s*(?:jarvis[,\s]*)?(?:bom dia|boa tarde|boa noite)\b/i
+
+/** Spacing between the cards the bridge puts up for the local brain. */
+const BRIEFING_CARD_GAP_MS = 5000
+
 const RESULT_FAILURES = {
   error_during_execution: 'The turn failed part way through.',
   error_max_turns: 'The turn ran too long and was stopped.',
@@ -1194,13 +1321,22 @@ const RESULT_FAILURES = {
   default: 'The turn ended without an answer.',
 }
 
-wss.on('connection', (socket) => {
-  console.log('[jarvis] client connected')
+wss.on('connection', (socket, req) => {
+  // Which model answers on this connection. Fixed for its life: the SDK session
+  // is built once below, and its environment cannot change under it.
+  const asked = new URL(req.url ?? '/', 'http://localhost').searchParams.get('brain')
+  const brain = asked === 'ollama' || asked === 'claude' ? asked : DEFAULT_BRAIN
+  const local = brain === 'ollama'
+  const model = local ? OLLAMA_MODEL : MODEL
+  console.log(`[jarvis] client connected · brain ${brain} (${model})`)
+
+  const lean = local && !OLLAMA_ALL_TOOLS
+  const externalServers = lean ? {} : MCP_SERVERS
 
   // Answer the HUD straight away rather than making it wait for the agent's
   // first turn. Refined later by the real init message.
   socket.send(
-    JSON.stringify({ type: 'ready', servers: Object.keys(MCP_SERVERS) }),
+    JSON.stringify({ type: 'ready', servers: Object.keys(externalServers), brain, model }),
   )
 
   /** Resolves the pending user message into the SDK's input generator. */
@@ -1292,6 +1428,9 @@ wss.on('connection', (socket) => {
   const seenTools = new Set()
   const heldTools = new Map()
 
+  /** The last text delta of this turn, to tell whether a new block needs a space. */
+  let lastText = ''
+
   /**
    * Resolves when the turn in flight has actually finished.
    *
@@ -1352,8 +1491,20 @@ wss.on('connection', (socket) => {
       // server. The HUD's handler closes over this socket, so a `display` call
       // lands on screen directly — which is also why this object is built per
       // connection rather than once.
-      mcpServers: {
-        ...MCP_SERVERS,
+      //
+      // The lean local brain gets only the briefing and the house — see
+      // LOCAL_PROMPT in ollama.mjs for why.
+      mcpServers: lean
+        ? {
+            briefing: briefingServer(),
+            screen: localScreenServer({
+              emitBlade: (blade) => send({ type: 'blade', blade }),
+              emitUi: (op, args) => send({ type: 'ui', op, args }),
+            }),
+            ...(homeConfig.enabled ? { home: homeServer() } : {}),
+          }
+        : {
+        ...externalServers,
         jarvis: displayServer(
           (panel) => send({ type: 'panel', panel }),
           (blade) => send({ type: 'blade', blade }),
@@ -1384,13 +1535,14 @@ wss.on('connection', (socket) => {
               }),
             }
           : {}),
-      },
+          },
       // A plain system prompt, not the claude_code preset. The preset is
       // tuned for a coding agent — verbose, file-oriented, and a large chunk
       // of input tokens on every turn. Replacing it makes the persona stick,
       // keeps answers short enough to speak, and cuts cost per turn.
-      systemPrompt:
-        SYSTEM_PROMPT + readPreferences() + (browserEnabled ? BROWSER_PROMPT : '') + TOOLS_PROMPT,
+      systemPrompt: lean
+        ? LOCAL_PROMPT
+        : SYSTEM_PROMPT + readPreferences() + (browserEnabled ? BROWSER_PROMPT : '') + TOOLS_PROMPT,
       // Run from the home directory so project-scoped MCP servers don't shadow
       // the global ones, and so file tools have a sane root.
       cwd: homedir(),
@@ -1415,8 +1567,10 @@ wss.on('connection', (socket) => {
       // Normally your own `/model` preference would decide, but that lives in
       // the settings files `settingSources: []` deliberately stops loading, so
       // without this line nothing in the project has a say at all.
-      model: MODEL,
-      effort: EFFORT,
+      model,
+      // Effort is an Anthropic control. The local brain gets its own
+      // environment, thinking off and a trimmed toolset — see ollama.mjs.
+      ...(local ? ollamaOptions() : { effort: EFFORT }),
       maxTurns: 24,
       permissionMode: 'default',
       // Without this the SDK only emits whole assistant messages, and JARVIS
@@ -1466,12 +1620,27 @@ wss.on('connection', (socket) => {
           // JARVIS goes completely mute.
           case 'stream_event': {
             const ev = msg.event
+            // Text either side of a tool call arrives as two blocks with
+            // nothing between them, so "foi eleito." and "O mercado caiu."
+            // became "eleito.O mercado" — which every synthesiser reads as
+            // "eleito ponto o mercado". A space at the seam keeps them two
+            // sentences.
+            if (
+              ev?.type === 'content_block_start' &&
+              ev.content_block?.type === 'text' &&
+              lastText &&
+              !/\s$/.test(lastText)
+            ) {
+              sendTurn({ type: 'text', delta: ' ' })
+              lastText = ' '
+            }
             if (
               ev?.type === 'content_block_delta' &&
               ev.delta?.type === 'text_delta' &&
               ev.delta.text
             ) {
               sendTurn({ type: 'text', delta: ev.delta.text })
+              lastText = ev.delta.text
             }
             if (
               ev?.type === 'content_block_start' &&
@@ -1537,6 +1706,7 @@ wss.on('connection', (socket) => {
             // otherwise grow for as long as the socket is open.
             seenTools.clear()
             heldTools.clear()
+            lastText = ''
             break
 
           case 'system':
@@ -1546,7 +1716,7 @@ wss.on('connection', (socket) => {
               const usable = (msg.mcp_servers ?? [])
                 .filter((s) => s.status !== 'needs-auth' && s.status !== 'failed')
                 .map((s) => s.name)
-              send({ type: 'ready', servers: usable })
+              send({ type: 'ready', servers: usable, brain, model })
               console.log(`[jarvis] ${usable.length} MCP servers available`)
             }
             break
@@ -1588,9 +1758,30 @@ wss.on('connection', (socket) => {
        * Waiting costs nothing when nothing is interrupting — the chain is an
        * already-resolved promise — and removes the cross-talk when there is.
        */
-      const text = msg.text
       const id = typeof msg.id === 'string' ? msg.id : null
-      void settling.then(() => {
+      // "Bom dia" travels with the time and weather already attached, so the
+      // first sentence of the briefing needs no tool round trip. See
+      // morningContext. Started alongside the settle wait, not after it.
+      //
+      // "Boa tarde" and "boa noite" are the same request at a different hour.
+      const greeting = GREETING.test(msg.text)
+      const text = greeting
+        ? morningContext({ withNews: lean }).then((ctx) => {
+            // The local brain cannot draw cards, so the bridge does: weather
+            // straight away, then one headline card every few seconds, roughly
+            // the pace at which they are read out.
+            if (lean) {
+              briefingCards(ctx).forEach((blade, i) => {
+                setTimeout(() => send({ type: 'blade', blade }), i * BRIEFING_CARD_GAP_MS)
+              })
+            }
+            return (
+              `${msg.text}\n\n[contexto do briefing — dados já carregados. ` +
+              `Cumprimente com "${ctx.agora.cumprimento}, senhor."]\n${JSON.stringify(ctx)}`
+            )
+          })
+        : msg.text
+      void Promise.all([settling, text]).then(([, text]) => {
         answering = id
         if (deliver) {
           const resolve = deliver

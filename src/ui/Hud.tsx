@@ -156,6 +156,7 @@ export function Hud() {
   const error = useStore((s) => s.error)
   const level = useStore((s) => s.level)
   const voice = useStore((s) => s.voice)
+  const brain = useStore((s) => s.brain)
   const bootNote = useStore((s) => s.bootNote)
   const gestures = useStore((s) => s.gestures)
   const looking = useStore((s) => s.looking)
@@ -315,6 +316,12 @@ export function Hud() {
             <>
               {' · '}
               <kbd>V</kbd> voz: {voice.replace(/\(.*?\)/g, '').trim()}
+            </>
+          )}
+          {brain && (
+            <>
+              {' · '}
+              <kbd>M</kbd> cérebro: {brain}
             </>
           )}
         </span>

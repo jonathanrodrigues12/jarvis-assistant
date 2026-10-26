@@ -45,12 +45,25 @@ const WMO = {
   95: 'trovoadas', 96: 'trovoadas com granizo', 99: 'trovoadas com granizo forte',
 }
 
+/**
+ * The right greeting for the hour, decided here rather than by the model.
+ * Left to infer it from "14:30", and handed a message that itself began "boa
+ * tarde", the model still opened with "Bom dia, senhor".
+ */
+function greetingFor(hour) {
+  if (hour >= 5 && hour < 12) return 'Bom dia'
+  if (hour >= 12 && hour < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
 function now() {
   const d = new Date()
   const fmt = (opts) => new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, ...opts }).format(d)
+  const hour = Number(fmt({ hour: 'numeric', hourCycle: 'h23' }))
   return {
     data: fmt({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
     hora: fmt({ hour: '2-digit', minute: '2-digit' }),
+    cumprimento: greetingFor(hour),
     fuso: TZ,
   }
 }
@@ -126,6 +139,138 @@ async function news(topic, max) {
   return { tema: topic || 'principais', noticias: items }
 }
 
+/**
+ * Ten-minute caches, warmed at bridge start-up.
+ *
+ * "Bom dia" used to wait on every source before a word was spoken — a geocode,
+ * a forecast and an RSS fetch per topic, each a round trip abroad. Weather and
+ * headlines do not change inside ten minutes, so they are fetched ahead of
+ * time and the briefing reads them from memory. Concurrent callers share one
+ * request rather than each starting their own.
+ */
+const TTL_MS = 10 * 60_000
+const cache = new Map()
+
+function cached(key, load) {
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value
+  const value = load()
+  cache.set(key, { at: Date.now(), value })
+  // A failure must not be remembered for ten minutes.
+  value.catch(() => {
+    if (cache.get(key)?.value === value) cache.delete(key)
+  })
+  return value
+}
+
+export const cachedWeather = (city = CITY) => cached(`weather:${city}`, () => weather(city))
+export const cachedNews = (topic, max = 3) => cached(`news:${topic}:${max}`, () => news(topic, max))
+
+/** Fetch everything the briefing will ask for, so it is in memory by "bom dia". */
+export function warmBriefing() {
+  const all = [cachedWeather(), ...TOPICS.map((t) => cachedNews(t, 3))]
+  return Promise.allSettled(all)
+}
+
+/**
+ * What "bom dia" needs before the first word: the time and the weather.
+ *
+ * Handed to the model with the greeting itself, so it can open with "Bom dia,
+ * senhor — vinte e dois graus em Sorocaba" straight away instead of spending
+ * two tool round trips finding out. Waits only briefly for the weather: if the
+ * cache is cold and the network slow, the model gets the time alone and calls
+ * get_weather itself, which is what it did before.
+ */
+export async function morningContext({ withNews = false } = {}) {
+  const within = (p) =>
+    Promise.race([
+      p.catch(() => null),
+      new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+    ])
+  const [clima, ...topics] = await Promise.all([
+    within(cachedWeather()),
+    // The local brain is handed the headlines too, so it can narrate the whole
+    // briefing without a tool call. Titles and sources only: links and dates
+    // are tokens a small model has to read and is never meant to say.
+    ...(withNews ? TOPICS.map((t) => within(cachedNews(t, 3))) : []),
+  ])
+  const ctx = { agora: now(), clima }
+  if (withNews) {
+    ctx.noticias = topics.filter(Boolean).map((n) => ({
+      tema: n.tema,
+      itens: n.noticias.slice(0, 2).map((i) => ({ titulo: i.titulo, fonte: i.fonte })),
+    }))
+  }
+  return ctx
+}
+
+/**
+ * The briefing's cards, built here rather than by the model.
+ *
+ * The local brain has no display tool — its manual alone is more than a small
+ * model can read in time — so on a greeting the bridge puts the cards up
+ * itself, from the same data it handed the model. Same shape and classes as
+ * the display tool's output, so they land in the deck like any other card.
+ */
+const esc = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
+
+const round = (n) => (typeof n === 'number' ? Math.round(n) : '–')
+
+let cardSeq = 0
+const card = (fields) => ({
+  id: `b${Date.now().toString(36)}-${(cardSeq++).toString(36)}`,
+  kind: 'markup',
+  size: 'compact',
+  hold: 'turn',
+  ...fields,
+})
+
+export function briefingCards(ctx) {
+  const cards = []
+  const w = ctx.clima
+  if (w) {
+    cards.push(
+      card({
+        kicker: 'PANORAMA · CLIMA',
+        title: w.cidade,
+        tag: `${round(w.hoje?.chance_chuva)}% CHUVA`,
+        html:
+          `<div><span class="hud-metric">${round(w.agora?.temperatura)}°</span>` +
+          `<span class="hud-unit">${esc(w.agora?.condicao)} · sensação ${round(w.agora?.sensacao)}°</span></div>` +
+          '<div class="hud-rows">' +
+          `<div class="hud-row"><span class="hud-idx">↓</span><span class="hud-main"><span class="hud-label">Mínima ${round(w.hoje?.minima)}°</span></span></div>` +
+          `<div class="hud-row"><span class="hud-idx">↑</span><span class="hud-main"><span class="hud-label">Máxima ${round(w.hoje?.maxima)}°</span></span></div>` +
+          `<div class="hud-row"><span class="hud-idx">~</span><span class="hud-main"><span class="hud-label">${esc(w.hoje?.condicao)}</span><span class="hud-sub">umidade ${round(w.agora?.umidade)}% · vento ${round(w.agora?.vento_kmh)} km/h</span></span></div>` +
+          '</div>',
+      }),
+    )
+  }
+  for (const n of ctx.noticias ?? []) {
+    const items = n.itens ?? []
+    if (!items.length) continue
+    cards.push(
+      card({
+        kicker: 'RADAR · NOTÍCIAS',
+        title: n.tema.charAt(0).toUpperCase() + n.tema.slice(1),
+        tag: items[0].fonte,
+        html:
+          '<div class="hud-rows">' +
+          items
+            .map(
+              (i, k) =>
+                `<div class="hud-row"><span class="hud-idx">0${k + 1}</span>` +
+                `<span class="hud-main"><span class="hud-label">${esc(i.titulo)}</span></span>` +
+                `<span class="hud-tag">${esc(i.fonte)}</span></div>`,
+            )
+            .join('') +
+          '</div>',
+      }),
+    )
+  }
+  return cards
+}
+
 const ok = (data) => ({ content: [{ type: 'text', text: JSON.stringify(data) }] })
 const fail = (err) => ({
   isError: true,
@@ -153,7 +298,7 @@ export function briefingServer() {
         { city: z.string().optional().describe('Nome da cidade. Omita para a cidade do usuário.') },
         async ({ city }) => {
           try {
-            return ok(await weather(city || CITY))
+            return ok(await cachedWeather(city || CITY))
           } catch (err) {
             return fail(err)
           }
@@ -169,7 +314,7 @@ export function briefingServer() {
         },
         async ({ topic, max }) => {
           try {
-            return ok(await news(topic, max))
+            return ok(await cachedNews(topic, max))
           } catch (err) {
             return fail(err)
           }

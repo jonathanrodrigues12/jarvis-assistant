@@ -112,11 +112,17 @@ export const USE_ELEVENLABS = flag(
  *     not the default. Try `fp32` (see kokoro.ts) before enabling it; int8
  *     quantisation often silently falls back to CPU on WebGPU, which is the
  *     likely cause.
+ *
+ *   'piper' — Piper, a local neural voice run natively by the bridge, with a
+ *     Brazilian Portuguese male voice (pt_BR-faber-medium by default — set
+ *     JARVIS_PIPER_VOICE on the bridge for another). Much faster than Kokoro,
+ *     no key, nothing leaves the machine. Needs the piper/ folder installed and
+ *     the bridge running; takes precedence over the automatic ElevenLabs voice.
  */
-export const TTS_ENGINE: 'kokoro' | 'system' = choice(
+export const TTS_ENGINE: 'kokoro' | 'piper' | 'system' = choice(
   'VITE_TTS_ENGINE',
   import.meta.env.VITE_TTS_ENGINE,
-  ['kokoro', 'system'] as const,
+  ['kokoro', 'piper', 'system'] as const,
   'system',
 )
 

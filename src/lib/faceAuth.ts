@@ -1,4 +1,5 @@
 import { Human, type Config } from '@vladmandic/human'
+import { openCameraMax } from './camera'
 
 /**
  * Face recognition for the biometric gate (src/ui/AuthGate.tsx).
@@ -35,6 +36,10 @@ const config: Partial<Config> = {
   // Every frame is a fresh look; skipping "unchanged" frames would let a
   // still photo coast through on an earlier, live result.
   cacheSensitivity: 0,
+  // The camera opens at its full resolution for the picture on screen; the
+  // models get a 1280-wide copy. A 4K frame would only make every look slower,
+  // and the face detector works on a 256-pixel crop either way.
+  filter: { enabled: true, width: 1280 },
   face: {
     enabled: true,
     detector: { rotation: false, maxDetected: 1, minConfidence: 0.6 },
@@ -104,10 +109,7 @@ export async function prepare(video: HTMLVideoElement, progress: Progress) {
   await human.warmup()
 
   progress(0.85, 'ATIVANDO CÂMERA')
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-    audio: false,
-  })
+  const stream = await openCameraMax()
   video.srcObject = stream
   await video.play()
   progress(1, 'SISTEMAS PRONTOS')

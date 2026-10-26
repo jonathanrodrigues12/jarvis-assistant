@@ -130,10 +130,47 @@ The loop is designed so that nothing silently dies and barge-in feels natural.
   the browser voice, and if the OS voice itself is broken it latches over to the
   cloud voice.
 
+- **Piper** (`VITE_TTS_ENGINE=piper`) is a local neural voice the bridge runs
+  natively — fast, offline, Brazilian Portuguese. It outranks the automatic
+  ElevenLabs voice. Install it into `piper/` (gitignored):
+
+  ```sh
+  mkdir -p piper/voices && cd piper
+  curl -LO https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip
+  unzip piper_windows_amd64.zip && rm piper_windows_amd64.zip
+  cd voices
+  for f in pt_BR-faber-medium.onnx pt_BR-faber-medium.onnx.json; do
+    curl -LO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/$f
+  done
+  ```
+
+  Other voices drop into `piper/voices/` and are picked with `JARVIS_PIPER_VOICE`.
+
 So it works with no keys and auto-upgrades when a key appears — there is no flag
 to set. Capability detection lives in `src/lib/capabilities.ts`, which probes the
 bridge's `GET /health` (returning `{ ok, tts, stt }`, both tracking the
 ElevenLabs key) once at boot and picks the engines.
+
+---
+
+### Local brain (Ollama)
+
+Claude is the default brain. A local model on [Ollama](https://ollama.com) can
+take over with **M** on the HUD (the conversation restarts, since each brain has
+its own session). Ollama serves the Anthropic Messages API, so it runs through
+the same Agent SDK session — tools, streaming and the permission gate are
+unchanged. See `bridge/ollama.mjs`.
+
+```sh
+ollama pull qwen3:4b-instruct
+ollama create jarvis-qwen3:4b -f bridge/ollama/Modelfile   # 8k context
+```
+
+By default the local brain runs lean: a short Portuguese persona, the briefing,
+home and camera tools only, and thinking forced off. On "bom dia" the bridge
+hands it the weather and headlines and puts the cards up itself. A 4B model
+that fits entirely in a 6GB GPU answers in well under a second this way;
+`JARVIS_OLLAMA_TOOLS=all` gives it the full toolset at a large cost in speed.
 
 ---
 
@@ -240,7 +277,7 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 |---|---|
 | `VITE_BACKEND` | `bridge` (default) or `direct` |
 | `VITE_BRIDGE_URL` | Where to reach the bridge |
-| `VITE_TTS_ENGINE` | `system` or `kokoro` |
+| `VITE_TTS_ENGINE` | `system`, `kokoro` or `piper` |
 | `VITE_KOKORO_VOICE` | Voice for the Kokoro engine |
 | `VITE_USE_ELEVENLABS` | Force the ElevenLabs voice on |
 | `VITE_ANTHROPIC_API_KEY` | Direct mode only |

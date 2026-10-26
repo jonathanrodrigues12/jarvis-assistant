@@ -506,6 +506,20 @@ export function uiServer(emit) {
         },
       ),
 
+      tool(
+        'ui_gestures',
+        'Turn hand-gesture control on or off — the same as the user pressing G. It ' +
+          'switches the camera on and tracks their hands, so they can point, pinch and ' +
+          'drag windows. Use it when they ask: "abra os gestos", "ative os gestos", ' +
+          '"liga o controle por gestos"; on=false for "desliga os gestos". This is not ' +
+          'the camera blade: it shows no video, only the hand cursor.',
+        { on: z.boolean().default(true).describe('true liga, false desliga.') },
+        async (args) => {
+          emit('gestures', { on: args.on !== false })
+          return ok(args.on === false ? 'Gestures off.' : 'Gestures on.')
+        },
+      ),
+
       tool('ui_reset', RESET_DESCRIPTION, {}, async () => {
         emit('reset', {})
         return ok('Interface restored.')

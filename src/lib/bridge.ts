@@ -35,6 +35,72 @@ type Frame = {
   seconds?: number
   when?: string
   servers?: Array<string | { name?: string }>
+  brain?: string
+  model?: string
+}
+
+// ---------------------------------------------------------------------------
+// Brain
+// ---------------------------------------------------------------------------
+
+/**
+ * Which model answers: Claude, or a local one through Ollama. The bridge reads
+ * it from the socket URL and builds that connection's session around it, so
+ * switching means a fresh connection — and, like any reconnect, a conversation
+ * that starts over.
+ */
+export type Brain = 'claude' | 'ollama'
+const BRAIN_PREF_KEY = 'jarvis.brain'
+
+function savedBrain(): Brain | null {
+  try {
+    const v = localStorage.getItem(BRAIN_PREF_KEY)
+    return v === 'claude' || v === 'ollama' ? v : null
+  } catch {
+    return null
+  }
+}
+
+/** Unset means "whatever the bridge defaults to" (JARVIS_BRAIN). */
+let brainPref: Brain | null = savedBrain()
+
+/** What the bridge says this connection is actually running. */
+let activeBrain: { brain: Brain; model: string } | null = null
+export const currentBrain = () => activeBrain
+
+let onBrain: ((b: { brain: Brain; model: string }) => void) | null = null
+export function watchBrain(fn: (b: { brain: Brain; model: string }) => void) {
+  onBrain = fn
+}
+
+function socketUrl(): string {
+  if (!brainPref) return BRIDGE_WS_URL
+  const sep = BRIDGE_WS_URL.includes('?') ? '&' : '?'
+  return `${BRIDGE_WS_URL}${sep}brain=${brainPref}`
+}
+
+/** Set by setBrain so the close it causes is not reported as a lost bridge. */
+let switching = false
+
+/**
+ * Change brains. Closes the current socket and dials straight back with the
+ * new choice; resolves once the new session is up.
+ */
+export async function setBrain(next: Brain): Promise<void> {
+  brainPref = next
+  try {
+    localStorage.setItem(BRAIN_PREF_KEY, next)
+  } catch {
+    /* the choice just won't survive a reload */
+  }
+  pending?.finish()
+  if (socket) {
+    switching = true
+    const old = socket
+    socket = null
+    old.close()
+  }
+  await warmBridge()
 }
 
 /** Every question gets an id so its answer can be told from anyone else's. */
@@ -176,6 +242,10 @@ function dispatch(ws: WebSocket) {
         .map((s) => (typeof s === 'string' ? s : (s.name ?? '')))
         .filter(Boolean)
       onServers?.(servers)
+      if (msg.brain === 'claude' || msg.brain === 'ollama') {
+        activeBrain = { brain: msg.brain, model: msg.model ?? '' }
+        onBrain?.(activeBrain)
+      }
       firstReady.resolve()
     } else if (msg.type === 'panel' && msg.panel) {
       onPanel?.(msg.panel)
@@ -218,7 +288,7 @@ function connect(): Promise<WebSocket> {
   firstReady = deferred()
 
   connecting = new Promise<WebSocket>((resolve, reject) => {
-    const ws = new WebSocket(BRIDGE_WS_URL)
+    const ws = new WebSocket(socketUrl())
     let settled = false
 
     /**
@@ -246,7 +316,9 @@ function connect(): Promise<WebSocket> {
       attempt = 0
       dispatch(ws)
       settle(null)
-      onConnection?.(everConnected ? 'reconnected' : 'open')
+      // A deliberate brain switch is not news — the caller announces it.
+      if (switching) switching = false
+      else onConnection?.(everConnected ? 'reconnected' : 'open')
       everConnected = true
     }
     ws.onerror = () => {

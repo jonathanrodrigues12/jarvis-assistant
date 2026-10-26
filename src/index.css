@@ -2470,6 +2470,36 @@ kbd {
 
 /* Narrow windows: the right column goes first, then both — the orb and the
    conversation matter more than the dashboard. */
+/* The house. States are green / grey / amber, each with its word beside it —
+   amber is the one that asks for something (a strip with its power cut). */
+.home-card { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.home-on { --home: #3fd8a0; }
+.home-off { --home: rgba(220, 232, 255, 0.28); }
+.home-offline { --home: #ffb547; }
+.home-bar { display: flex; gap: 2px; height: 6px; margin-bottom: 6px; }
+.home-seg { flex-basis: 0; min-width: 6px; border-radius: 3px; background: var(--home); }
+.home-seg.home-on { box-shadow: 0 0 8px color-mix(in srgb, var(--home) 60%, transparent); }
+.home-legend { display: flex; gap: 12px; font-size: 10px; color: rgba(220, 232, 255, 0.7); margin-bottom: 8px; }
+.home-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.home-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--home); }
+.home-dot.home-on { box-shadow: 0 0 6px var(--home); }
+.home-list { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 5px; padding-right: 2px; }
+.home-sec { font-size: 8px; letter-spacing: 0.2em; color: rgba(220, 232, 255, 0.45); margin-top: 4px; }
+.home-row { display: flex; align-items: center; gap: 8px; font-size: 11px; min-height: 18px; }
+.home-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-keys { display: flex; gap: 3px; flex: 0 0 auto; }
+.home-key {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  color: rgba(220, 232, 255, 0.5);
+  border: 1px solid rgba(220, 232, 255, 0.16);
+}
+.home-key.is-on { color: #06140f; background: #3fd8a0; border-color: #3fd8a0; box-shadow: 0 0 6px rgba(63, 216, 160, 0.55); }
+.home-meta { font: 500 10px 'JetBrains Mono', monospace; color: rgba(220, 232, 255, 0.6); }
+.home-swatch { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.35); }
+.home-swatch.is-dim { opacity: 0.3; }
+
 @media (max-width: 1280px) { .side-right { display: none; } }
 @media (max-width: 1000px) { .side-left { display: none; } }
 @media (max-height: 760px) { .side-map { display: none; } }

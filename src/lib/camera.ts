@@ -44,6 +44,8 @@ export const diag = {
   holders: 0,
   buffered: 0,
   lastError: '',
+  /** What the camera actually delivered, e.g. 1920×1080@30. */
+  resolution: '',
 }
 
 if (typeof window !== 'undefined') {
@@ -51,6 +53,44 @@ if (typeof window !== 'undefined') {
 }
 
 /* ------------------------------------------------------------------- stream */
+
+/**
+ * Opens the camera at its own maximum resolution, in two steps.
+ *
+ * An `ideal` alone is not enough: Chrome opens near the ideal, and with none
+ * at all it opens at 640×480 whatever the sensor can do. So the stream opens
+ * at a high ideal first, then the track is asked what it is capable of and
+ * pushed to that ceiling. If the camera refuses the ceiling (some report modes
+ * they cannot deliver at once), the first stream is kept. Shared with the face
+ * gate, which opens its own stream before anything here exists.
+ */
+export async function openCameraMax(): Promise<MediaStream> {
+  const s = await navigator.mediaDevices.getUserMedia({
+    video: {
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+      frameRate: { ideal: 30 },
+      facingMode: 'user',
+    },
+    audio: false,
+  })
+  const track = s.getVideoTracks()[0]
+  const caps = track?.getCapabilities?.()
+  if (caps?.width?.max && caps?.height?.max) {
+    await track
+      .applyConstraints({
+        width: { ideal: caps.width.max },
+        height: { ideal: caps.height.max },
+        frameRate: { ideal: 30 },
+      })
+      .catch(() => {})
+  }
+  const settings = track?.getSettings()
+  diag.resolution = settings
+    ? `${settings.width}×${settings.height}@${Math.round(settings.frameRate ?? 0)}`
+    : ''
+  return s
+}
 
 /**
  * Take a hold on the camera. Every caller must release it exactly once.
@@ -66,9 +106,7 @@ export async function holdCamera(): Promise<HTMLVideoElement> {
   if (video && stream) return video
 
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 1280, height: 720, facingMode: 'user' },
-    })
+    stream = await openCameraMax()
     const el = document.createElement('video')
     el.autoplay = true
     el.playsInline = true
@@ -140,7 +178,12 @@ const toJpeg = (canvas: HTMLCanvasElement, q = 0.82) => {
 export function grabFrame(): { data: string; mimeType: string } {
   if (!video?.videoWidth) throw new Error('the camera is not ready')
   const canvas = document.createElement('canvas')
-  if (!drawTo(canvas, video.videoWidth, video.videoHeight)) {
+  // The stream runs at the camera's maximum, which can be 4K; the model scales
+  // anything past ~1600px down on arrival, so sending more is only bytes.
+  const scale = Math.min(1, 1920 / video.videoWidth)
+  const w = Math.round(video.videoWidth * scale)
+  const h = Math.round(video.videoHeight * scale)
+  if (!drawTo(canvas, w, h)) {
     throw new Error('could not read the camera frame')
   }
   return toJpeg(canvas)

@@ -1,0 +1,7 @@
+# Local brain for JARVIS. qwen3:4b because the 8b does not fit a 6GB laptop GPU
+# alongside the interface (20 of 37 layers offloaded, ~6 tokens/s). 8k context
+# fits the lean local prompt plus the briefing data (Ollama defaults to 4096).
+#   ollama pull qwen3:4b-instruct   (the plain qwen3:4b tag only runs in thinking mode)
+#   ollama create jarvis-qwen3:4b -f bridge/ollama/Modelfile
+FROM qwen3:4b-instruct
+PARAMETER num_ctx 8192

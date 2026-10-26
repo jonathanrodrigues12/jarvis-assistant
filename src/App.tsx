@@ -26,12 +26,15 @@ import {
   watchCapture,
   watchUi,
   watchConnection,
+  watchBrain,
+  currentBrain,
+  switchBrain,
   connectedLabels,
   usingBridge,
   type Msg,
 } from './lib/brain'
 import { startAnalyser, micLevel } from './lib/audio'
-import { probeCapabilities } from './lib/capabilities'
+import { probeCapabilities, caps as speechCaps } from './lib/capabilities'
 import { env } from './config'
 
 /**
@@ -70,6 +73,35 @@ const PREFIX = '(?:hey|hi|ok|okay|yo|ei|oi|ol[aá])'
 const BARE_NAME = new RegExp(`^${PREFIX}?\\s*${NAME}[\\s,.!?]*$`, 'i')
 /** A leading vocative on a real command: "Jarvis, como está o tempo". */
 const LEADING_NAME = new RegExp(`^${PREFIX}?\\s*${NAME}\\b[\\s,.:!?-]*`, 'i')
+
+/**
+ * Hand tracking on or off — from the G key, or from JARVIS when asked aloud
+ * ("abra os gestos"). One path for both, so a spoken request fails the same
+ * visible way a keypress does when the camera is refused.
+ */
+function setGesturesOn(on: boolean) {
+  const s = useStore.getState()
+  if (on === s.gestures) return
+  if (!on) {
+    hands.disableHands()
+    s.setGestures(false)
+    return
+  }
+  s.setError(null)
+  void hands
+    .enableHands()
+    .then(() => useStore.getState().setGestures(true))
+    .catch((err: Error) => {
+      useStore.getState().setGestures(false)
+      useStore
+        .getState()
+        .setError(
+          err?.name === 'NotAllowedError'
+            ? 'Acesso à câmera negado — o controle por gestos está indisponível.'
+            : `O controle por gestos falhou ao iniciar: ${err?.message ?? err}`,
+        )
+    })
+}
 
 export default function App() {
   const store = useStore
@@ -432,6 +464,9 @@ export default function App() {
     progress(0, 'REGISTRANDO CANAIS')
 
     watchServers((servers) => store.getState().setConnected(servers))
+    watchBrain(({ brain, model }) =>
+      store.getState().setBrain(brain === 'claude' ? 'Claude' : model || 'local'),
+    )
     watchPanels((panel) => store.getState().pushPanel(panel))
     watchBlades((blade) => store.getState().pushBlade(blade))
 
@@ -518,6 +553,9 @@ export default function App() {
         case 'close':
           s.closeWindows(String(a.target ?? 'front'))
           break
+        case 'gestures':
+          setGesturesOn(Boolean(a.on))
+          break
         default:
           console.warn('[jarvis] unknown ui op:', op, args)
       }
@@ -572,7 +610,7 @@ export default function App() {
     progress(0.45, 'VERIFICANDO SÍNTESE DE VOZ')
     const caps = await probeCapabilities()
     store.getState().setVoice(currentVoiceName())
-    progress(0.6, `VOZ · ${caps.tts ? 'ELEVENLABS' : 'SISTEMA'}`)
+    progress(0.6, `VOZ · ${currentVoiceName().toUpperCase()}`)
 
     // The analyser is what makes the reactor pulse with your voice. It needs a
     // getUserMedia stream; speech recognition does not, and gets its own. So a
@@ -706,31 +744,48 @@ export default function App() {
         return
       }
 
+      // M swaps the brain between Claude and the local model on Ollama. The
+      // bridge builds one session per connection, so this reconnects — and the
+      // conversation so far is left behind with the old session.
+      if (
+        e.key === 'm' &&
+        usingBridge &&
+        !e.repeat &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault()
+        const next = currentBrain() === 'ollama' ? 'claude' : 'ollama'
+        if (next === 'ollama' && !speechCaps().ollama) {
+          store
+            .getState()
+            .setError('Ollama indisponível — inicie o Ollama e baixe o modelo configurado no bridge.')
+          return
+        }
+        interrupt()
+        silence()
+        void switchBrain(next)
+          .then(() => {
+            const demo = createSpeaker()
+            speaker.current = demo
+            demo.say(
+              next === 'ollama'
+                ? 'Modelo local ativado, senhor. Começamos uma nova conversa.'
+                : 'Claude de volta ao comando, senhor. Começamos uma nova conversa.',
+            )
+            void demo.end()
+          })
+          .catch((err) => store.getState().setError(String(err?.message ?? err)))
+        return
+      }
+
       // G puts the camera on and starts tracking hands. Off by default and
       // never implicit: a webcam that turns itself on because an interface
       // thought it might be useful is not a trade anyone agreed to.
       if (e.key === 'g' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
-        const on = store.getState().gestures
-        if (on) {
-          hands.disableHands()
-          store.getState().setGestures(false)
-        } else {
-          store.getState().setError(null)
-          void hands
-            .enableHands()
-            .then(() => store.getState().setGestures(true))
-            .catch((err: Error) => {
-              store.getState().setGestures(false)
-              store
-                .getState()
-                .setError(
-                  err?.name === 'NotAllowedError'
-                    ? 'Acesso à câmera negado — o controle por gestos está indisponível.'
-                    : `O controle por gestos falhou ao iniciar: ${err?.message ?? err}`,
-                )
-            })
-        }
+        setGesturesOn(!store.getState().gestures)
         return
       }
 

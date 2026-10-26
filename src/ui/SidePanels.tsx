@@ -28,6 +28,19 @@ type Weather = {
   hoje: { minima: number; maxima: number; chance_chuva: number }
 }
 
+type HomeDevice = {
+  id: string
+  nome: string
+  tipo: 'luz' | 'interruptor' | string
+  online: boolean
+  ligado?: boolean
+  brilho?: number
+  cor?: string
+  canais?: { canal: number; nome: string; ligado: boolean }[]
+}
+
+type Home = { atualizado: number; dispositivos: HomeDevice[] }
+
 function usePoll<T>(path: string, everyMs: number): T | null {
   const [data, setData] = useState<T | null>(null)
   useEffect(() => {
@@ -329,6 +342,104 @@ function WeatherCard() {
   )
 }
 
+/** A device's one-word state. Offline wins: a strip with its power cut still
+ *  reports the last colour it had, and showing that as "on" would be a lie. */
+const stateOf = (d: HomeDevice) => (!d.online ? 'offline' : d.ligado ? 'on' : 'off')
+
+const STATE_LABEL = { on: 'ligado', off: 'desligado', offline: 'offline' } as const
+
+/**
+ * The house at a glance: how much is on, then every device with its keys.
+ *
+ * The bar is one segment per state, sized by device count — the question it
+ * answers is "is anything left on", not "how much power". Each state carries
+ * its word as well as its colour, so it reads the same without the colour.
+ * Polled every ten seconds; the bridge answers from a one-minute cache, so
+ * this costs the Tuya quota nothing extra, and changes JARVIS makes himself
+ * show on the next poll.
+ */
+function HomeCard() {
+  const home = usePoll<Home>('/home', 10_000)
+  if (!home) return null
+
+  const list = home.dispositivos
+  const count = { on: 0, off: 0, offline: 0 }
+  for (const d of list) count[stateOf(d)]++
+  const switches = list.filter((d) => d.tipo !== 'luz')
+  const strips = list.filter((d) => d.tipo === 'luz')
+
+  return (
+    <section className="side-card home-card">
+      <header className="side-head side-head-row">
+        <div className="side-head">
+          <span className="side-kicker">CASA · SMART LIFE</span>
+          <span className="side-title">
+            {count.on ? `${count.on} ${count.on === 1 ? 'ligado' : 'ligados'}` : 'Tudo desligado'}
+          </span>
+        </div>
+        <span className="side-pill">{list.length} disp.</span>
+      </header>
+
+      <div className="home-bar" role="img" aria-label={`${count.on} ligados, ${count.off} desligados, ${count.offline} offline`}>
+        {(['on', 'off', 'offline'] as const).map((k) =>
+          count[k] ? (
+            <span
+              key={k}
+              className={`home-seg home-${k}`}
+              style={{ flexGrow: count[k] }}
+              title={`${count[k]} ${STATE_LABEL[k]}`}
+            />
+          ) : null,
+        )}
+      </div>
+      <div className="home-legend">
+        {(['on', 'off', 'offline'] as const).map((k) => (
+          <span key={k}>
+            <i className={`home-dot home-${k}`} />
+            {count[k]} {count[k] === 1 || k === 'offline' ? STATE_LABEL[k] : `${STATE_LABEL[k]}s`}
+          </span>
+        ))}
+      </div>
+
+      <div className="home-list">
+        {switches.length > 0 && <div className="home-sec">INTERRUPTORES</div>}
+        {switches.map((d) => (
+          <div key={d.id} className="home-row" title={`${d.nome} · ${STATE_LABEL[stateOf(d)]}`}>
+            <i className={`home-dot home-${stateOf(d)}`} />
+            <span className="home-name">{d.nome}</span>
+            <span className="home-keys">
+              {(d.canais ?? []).map((c) => (
+                <span key={c.canal} className={`home-key${c.ligado ? ' is-on' : ''}`} title={`${c.nome} · ${c.ligado ? 'ligado' : 'desligado'}`}>
+                  {c.nome}
+                </span>
+              ))}
+            </span>
+          </div>
+        ))}
+
+        {strips.length > 0 && <div className="home-sec">FITAS LED</div>}
+        {strips.map((d) => {
+          const st = stateOf(d)
+          return (
+            <div key={d.id} className="home-row" title={`${d.nome} · ${STATE_LABEL[st]}`}>
+              <i className={`home-dot home-${st}`} />
+              <span className="home-name">{d.nome}</span>
+              <span className="home-meta">
+                {st === 'offline' ? 'sem energia' : st === 'on' ? `${d.brilho ?? 100}%` : 'desligado'}
+              </span>
+              <i
+                className={`home-swatch${st === 'on' ? '' : ' is-dim'}`}
+                style={{ background: d.cor ?? '#ffffff' }}
+                title={d.cor ? `cor ${d.cor}` : 'branco'}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 function SystemsCard() {
   const connected = useStore((s) => s.connected)
   const voice = useStore((s) => s.voice)
@@ -375,6 +486,7 @@ export function SideRight() {
     <aside className="side side-right">
       <Greeting />
       <WeatherCard />
+      <HomeCard />
       <SystemsCard />
     </aside>
   )

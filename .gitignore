@@ -34,3 +34,6 @@ public/human-models/
 
 # The user's own entrance music (copyrighted; never committed)
 public/audio/match.mp3
+
+# Piper binary and voice models (~90MB) — downloaded locally, see README
+piper/
