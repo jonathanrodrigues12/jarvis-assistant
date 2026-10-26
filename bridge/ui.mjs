@@ -336,7 +336,7 @@ const GOLDEN_ANGLE = 137.507764
  */
 export function uiServer(emit) {
   return createSdkMcpServer({
-    name: 'jarvis_ui',
+    name: 'ui',
     version: '1.0.0',
     instructions:
       'JARVIS\'s control of his own interface — colour, reactor, orbiting ' +

@@ -812,7 +812,7 @@ export function chromeServer({ allowWrites }) {
   }
 
   return createSdkMcpServer({
-    name: 'jarvis_chrome',
+    name: 'chrome',
     version: '1.0.0',
     instructions:
       "The user's own Chrome, already signed in to everything they use. " +

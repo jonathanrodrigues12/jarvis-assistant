@@ -134,7 +134,7 @@ const fail = (err) => ({
 
 export function briefingServer() {
   return createSdkMcpServer({
-    name: 'jarvis_briefing',
+    name: 'briefing',
     version: '1.0.0',
     instructions:
       'Fontes do briefing matinal: data e hora, clima e manchetes. Use quando o ' +

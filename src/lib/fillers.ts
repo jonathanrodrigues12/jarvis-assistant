@@ -102,7 +102,7 @@ const BY_TOOL: Rule[] = [
   },
   // The house: switches and lights.
   {
-    server: /jarvis_home/,
+    server: /^home$/,
     lines: ['Um momento.', 'Ajustando, senhor.'],
   },
   // Video sits above image because higgsfield and palmier both do either, so

@@ -435,7 +435,7 @@ const fail = (err) => ({
 
 export function homeServer() {
   return createSdkMcpServer({
-    name: 'jarvis_home',
+    name: 'home',
     version: '1.0.0',
     instructions:
       'Automação da casa do usuário: interruptores e fitas de LED do Smart Life. Aja ' +
@@ -465,5 +465,3 @@ export function homeServer() {
 
 export const homeConfig = { region: REGION, host: HOST, enabled: homeEnabled }
 
-/** Internal: signed read for diagnostic scripts. */
-export const __probe = (method, path, opts) => call(method, path, opts)

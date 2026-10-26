@@ -269,7 +269,7 @@ function decideTool(name) {
     // without them JARVIS has no display at all. They also have to be named
     // here rather than left to the verb rules below, which read `ui_theme` as
     // a write and would hold the whole surface back behind ALLOW_WRITES.
-    if (server === 'jarvis' || server === 'jarvis_ui') return true
+    if (server === 'jarvis' || server === 'ui') return true
 
     // The browser server gates itself, at construction: chromeServer() only
     // builds the acting tools — click, type, form input, close tab — when
@@ -278,7 +278,7 @@ function decideTool(name) {
     // reading verbs out of the name would only get it wrong: `chrome_navigate`
     // begins with no read verb and would fall to the write branch, which would
     // withhold the one tool the whole server is for.
-    if (server === 'jarvis_chrome') return true
+    if (server === 'chrome') return true
 
     // The camera. Not withheld behind ALLOW_WRITES: looking changes nothing,
     // and the real gate is the browser's own camera permission plus an
@@ -286,13 +286,13 @@ function decideTool(name) {
     if (server === 'jarvis_eyes') return true
 
     // The briefing sources only ever read public weather and headlines.
-    if (server === 'jarvis_briefing') return true
+    if (server === 'briefing') return true
 
     // The house. Switching a light is effectful, but it is the whole reason
     // the user set this server up, and it is only built when they did — the
     // Tuya keys in .env.local are the consent. The worst a misheard command
     // does is leave a room dark, which the next sentence undoes.
-    if (server === 'jarvis_home') return true
+    if (server === 'home') return true
 
     // The in-app browser gates itself, per action: links and reading always,
     // buttons and typing only with writes on. See browser.mjs.
@@ -1333,7 +1333,7 @@ wss.on('connection', (socket) => {
     // The ui_* tools are the same case one step further: retinting the
     // interface is the interface talking about itself, not work being done for
     // the user, and the badge would be describing the very thing they can see.
-    if (name.startsWith('mcp__jarvis_ui__')) return
+    if (name.startsWith('mcp__ui__')) return
     if (decideTool(name)) return sendTurn({ type: 'tool', name })
     if (id) heldTools.set(id, name)
   }
@@ -1360,20 +1360,20 @@ wss.on('connection', (socket) => {
         ),
         // The interface controls, on the same socket. A separate key because
         // MCP tool names are `mcp__<key>__<tool>` and one key can only carry
-        // one server; the underscore in it is why decideTool and announceTool
-        // both name `jarvis_ui` explicitly.
-        jarvis_ui: uiServer((op, args) => send({ type: 'ui', op, args })),
+        // one server; decideTool and announceTool both name `ui` explicitly,
+        // since the verb rules would read `ui_theme` as a write.
+        ui: uiServer((op, args) => send({ type: 'ui', op, args })),
         // The user's own Chrome, over the extension's native-host socket. It
         // holds no per-connection state, but it is built here with the rest so
         // the write gate is read once, at the same point as everything else.
-        jarvis_chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
+        chrome: chromeServer({ allowWrites: ALLOW_WRITES }),
         // The camera, which unlike everything else here has to ask and wait.
         jarvis_eyes: visionServer(ask),
         // Weather, headlines and the time, for "bom dia".
-        jarvis_briefing: briefingServer(),
+        briefing: briefingServer(),
         // Switches and lights, through the Tuya cloud behind Smart Life — only
         // when the keys are in .env.local.
-        ...(homeConfig.enabled ? { jarvis_home: homeServer() } : {}),
+        ...(homeConfig.enabled ? { home: homeServer() } : {}),
         // The browser on the blade — only when running inside the desktop app,
         // which is what provides one.
         ...(browserEnabled
