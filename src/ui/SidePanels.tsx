@@ -101,8 +101,9 @@ function Gauge({
               </>
             ) : (
               <>
-                <stop offset="0" stopColor="#38d4ff" />
-                <stop offset="1" stopColor="#8a6bff" />
+                <stop offset="0" stopColor="#ff3d7f" />
+                <stop offset="0.5" stopColor="#8a6bff" />
+                <stop offset="1" stopColor="#38d4ff" />
               </>
             )}
           </linearGradient>
@@ -175,25 +176,43 @@ function AudioCard() {
               return Math.min(1, level * 1.4 * shape)
             })
           : micSpectrum(BARS)
-      const w = (el.width = el.clientWidth * devicePixelRatio)
-      const h = (el.height = el.clientHeight * devicePixelRatio)
+      const dpr = devicePixelRatio
+      const w = (el.width = el.clientWidth * dpr)
+      const h = (el.height = el.clientHeight * dpr)
       g.clearRect(0, 0, w, h)
-      const grad = g.createLinearGradient(0, 0, w, 0)
-      grad.addColorStop(0, '#38d4ff')
-      grad.addColorStop(1, '#8a6bff')
-      g.fillStyle = grad
-      g.shadowColor = 'rgba(80, 160, 255, 0.8)'
-      g.shadowBlur = 8 * devicePixelRatio
+
+      // The chart's furniture: faint horizontal guides and a baseline.
+      g.shadowBlur = 0
+      g.strokeStyle = 'rgba(140, 170, 220, 0.12)'
+      g.lineWidth = dpr
+      for (let k = 1; k <= 3; k++) {
+        const y = Math.round((h * k) / 4) + 0.5
+        g.beginPath()
+        g.moveTo(0, y)
+        g.lineTo(w, y)
+        g.stroke()
+      }
+
+      // A histogram from the baseline, as in the reference: the low half of the
+      // spectrum in hot magenta-red, the high half in cold blue.
+      const hot = g.createLinearGradient(0, h, 0, 0)
+      hot.addColorStop(0, '#b23cff')
+      hot.addColorStop(1, '#ff3d5e')
+      const cold = g.createLinearGradient(0, h, 0, 0)
+      cold.addColorStop(0, '#2a6bff')
+      cold.addColorStop(1, '#38d4ff')
       const gap = w / BARS
-      const bw = gap * 0.55
+      const bw = gap * 0.78
       for (let i = 0; i < BARS; i++) {
         // Quick to rise, slower to fall, so speech reads as a moving shape.
         shown[i] += (want[i] - shown[i]) * (want[i] > shown[i] ? 0.55 : 0.12)
-        const bh = Math.max(2 * devicePixelRatio, shown[i] * h * 0.92)
+        const bh = Math.max(2 * dpr, shown[i] * h * 0.95)
         const x = i * gap + (gap - bw) / 2
-        g.beginPath()
-        g.roundRect(x, (h - bh) / 2, bw, bh, bw / 2)
-        g.fill()
+        const isHot = i < BARS / 2
+        g.fillStyle = isHot ? hot : cold
+        g.shadowColor = isHot ? 'rgba(255, 61, 94, 0.7)' : 'rgba(56, 160, 255, 0.7)'
+        g.shadowBlur = 6 * dpr
+        g.fillRect(x, h - bh, bw, bh)
       }
       raf = requestAnimationFrame(draw)
     }

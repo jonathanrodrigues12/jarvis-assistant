@@ -100,6 +100,11 @@ const BY_TOOL: Rule[] = [
     server: /briefing/,
     lines: ['Preparando o panorama do dia.', 'Reunindo o briefing, senhor.'],
   },
+  // The house: switches and lights.
+  {
+    server: /jarvis_home/,
+    lines: ['Um momento.', 'Ajustando, senhor.'],
+  },
   // Video sits above image because higgsfield and palmier both do either, so
   // the verb in the tool name is the only thing separating them — a rule on the
   // server alone would send every generate_video to "Rendering."

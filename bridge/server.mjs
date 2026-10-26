@@ -24,6 +24,7 @@ import { uiServer } from './ui.mjs'
 import { chromeAvailable, chromeServer } from './chrome.mjs'
 import { visionServer } from './vision.mjs'
 import { briefingConfig, briefingServer, weather } from './briefing.mjs'
+import { homeConfig, homeServer } from './home.mjs'
 import { systemStats } from './system.mjs'
 import { browserEnabled, browserServer } from './browser.mjs'
 import { homedir, tmpdir } from 'node:os'
@@ -287,6 +288,12 @@ function decideTool(name) {
     // The briefing sources only ever read public weather and headlines.
     if (server === 'jarvis_briefing') return true
 
+    // The house. Switching a light is effectful, but it is the whole reason
+    // the user set this server up, and it is only built when they did — the
+    // Tuya keys in .env.local are the consent. The worst a misheard command
+    // does is leave a room dark, which the next sentence undoes.
+    if (server === 'jarvis_home') return true
+
     // The in-app browser gates itself, per action: links and reading always,
     // buttons and typing only with writes on. See browser.mjs.
     if (server === 'jarvis_browser') return true
@@ -307,6 +314,10 @@ const SYSTEM_PROMPT = `Você é o JARVIS. Você está falando em voz alta com um
 IDIOMA. Fale SEMPRE em português do Brasil, mesmo que uma ferramenta devolva
 texto em inglês. As instruções técnicas abaixo estão em inglês; isso não muda o
 idioma em que você fala. Os títulos dos painéis também ficam em português.
+Isso vale para TODO texto que você escrever, inclusive as frases curtas antes
+ou entre chamadas de ferramenta: nunca "I'll start the morning briefing" ou
+"Let me check", e sim "Preparando o briefing, senhor." ou nada. Na dúvida, não
+anuncie o que vai fazer; apenas faça.
 
 TAMANHO. Duas frases é o teto numa conversa; a mediana fica abaixo de doze
 palavras. Cada palavra é lida em voz alta e o usuário espera em silêncio enquanto
@@ -1141,6 +1152,11 @@ console.log(
     : '[jarvis] in-app browser off — run the desktop app (npm run app) for it',
 )
 console.log(
+  homeConfig.enabled
+    ? `[jarvis] home: Tuya ${homeConfig.region} (${homeConfig.host})`
+    : '[jarvis] home off — set TUYA_ACCESS_ID and TUYA_ACCESS_SECRET to enable',
+)
+console.log(
   `[jarvis] briefing: ${briefingConfig.city} · ${briefingConfig.topics.join(', ')}` +
     ' — set JARVIS_CITY and JARVIS_NEWS_TOPICS to change',
 )
@@ -1355,6 +1371,9 @@ wss.on('connection', (socket) => {
         jarvis_eyes: visionServer(ask),
         // Weather, headlines and the time, for "bom dia".
         jarvis_briefing: briefingServer(),
+        // Switches and lights, through the Tuya cloud behind Smart Life — only
+        // when the keys are in .env.local.
+        ...(homeConfig.enabled ? { jarvis_home: homeServer() } : {}),
         // The browser on the blade — only when running inside the desktop app,
         // which is what provides one.
         ...(browserEnabled

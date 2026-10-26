@@ -19,6 +19,7 @@
     "bridge:writes": "JARVIS_ALLOW_WRITES=1 node bridge/server.mjs",
     "setup": "node scripts/setup.mjs",
     "check:briefing": "node scripts/check-briefing.mjs",
+    "check:home": "node scripts/check-home.mjs",
     "app": "node scripts/app.mjs",
     "app:writes": "node scripts/app.mjs --writes"
   },
