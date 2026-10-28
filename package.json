@@ -21,7 +21,8 @@
     "check:briefing": "node scripts/check-briefing.mjs",
     "check:home": "node scripts/check-home.mjs",
     "app": "node scripts/app.mjs",
-    "app:writes": "node scripts/app.mjs --writes"
+    "app:writes": "node scripts/app.mjs --writes",
+    "dist": "node scripts/dist.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.220",
@@ -52,9 +53,46 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^6.0.4",
     "electron": "44.9.3",
+    "electron-builder": "^26.0.12",
     "oxlint": "^1.75.0",
     "tsx": "^4.23.1",
     "typescript": "~6.0.2",
     "vite": "^8.2.0"
+  },
+  "build": {
+    "appId": "com.jarvis.desktop",
+    "productName": "JARVIS",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "asar": false,
+    "files": [
+      "package.json",
+      "electron/**",
+      "bridge/**",
+      "dist/**",
+      "build/icon.png",
+      "piper/**",
+      "!**/.env*",
+      "!preferencias.md",
+      "!**/*.log"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "shortcutName": "JARVIS",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico"
+    }
   }
 }

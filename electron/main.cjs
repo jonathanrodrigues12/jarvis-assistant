@@ -19,11 +19,49 @@
 
 const { app, BrowserWindow, session } = require('electron')
 const { spawn } = require('node:child_process')
+const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
 
 const ROOT = path.join(__dirname, '..')
-const FACE_PORT = Number(process.env.JARVIS_FACE_PORT || 5173)
+
+/**
+ * Installed, there is no Vite and no guarantee of a system Node. The face is the
+ * built `dist/`, served from here, and the bridge runs on Electron's own Node.
+ * Its own port, inside the range the bridge trusts (5173-5199), so an installed
+ * JARVIS and `npm run app` from the source tree do not fight over 5173.
+ */
+const PACKAGED = app.isPackaged
+const FACE_PORT = Number(process.env.JARVIS_FACE_PORT || (PACKAGED ? 5183 : 5173))
+
+/**
+ * Settings that must not ship inside an installer — the keys in .env.local and
+ * the personal preferencias.md — live in %APPDATA%\JARVIS instead, where the
+ * bridge is told to look. `npm run dist` copies this machine's copies there.
+ */
+const SETTINGS_DIR = path.join(app.getPath('appData'), 'JARVIS')
+
+/**
+ * Installed, there is no terminal to read the bridge's output in, and that
+ * output is the only account of why a turn failed. So it also goes to
+ * %APPDATA%\JARVIS\jarvis.log, started fresh on each launch.
+ */
+let logFile = null
+if (PACKAGED) {
+  try {
+    fs.mkdirSync(SETTINGS_DIR, { recursive: true })
+    logFile = fs.createWriteStream(path.join(SETTINGS_DIR, 'jarvis.log'), { flags: 'w' })
+    for (const level of ['log', 'warn', 'error']) {
+      const original = console[level].bind(console)
+      console[level] = (...args) => {
+        original(...args)
+        logFile.write(args.map(String).join(' ') + '\n')
+      }
+    }
+  } catch {
+    /* logging is a convenience; run without it */
+  }
+}
 const BRIDGE_PORT = Number(process.env.JARVIS_BRIDGE_PORT || 8787)
 const CDP_PORT = Number(process.env.JARVIS_BROWSER_CDP || 9334)
 const FACE_URL = `http://localhost:${FACE_PORT}/`
@@ -40,13 +78,21 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 const children = []
 
 function run(name, args, env) {
-  // System Node rather than Electron's own: the bridge spawns the Claude CLI
-  // and expects an ordinary Node environment around it.
-  const child = spawn('node', args, {
-    cwd: ROOT,
-    env: { ...process.env, ...env },
-    windowsHide: true,
-  })
+  // From the source tree, system Node: the bridge spawns the Claude CLI and
+  // expects an ordinary Node environment around it. Installed, Electron's own
+  // binary in Node mode, since the machine may not have Node at all — the
+  // Claude CLI the SDK spawns is a native executable either way.
+  const child = PACKAGED
+    ? spawn(process.execPath, args, {
+        cwd: ROOT,
+        env: { ...process.env, ...env, ELECTRON_RUN_AS_NODE: '1' },
+        windowsHide: true,
+      })
+    : spawn('node', args, {
+        cwd: ROOT,
+        env: { ...process.env, ...env },
+        windowsHide: true,
+      })
   const tag = (d) =>
     d
       .toString()
@@ -80,6 +126,64 @@ function waitFor(url, ms = 60_000) {
       req.setTimeout(2000, () => req.destroy())
     }
     poll()
+  })
+}
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.txt': 'text/plain; charset=utf-8',
+}
+
+/**
+ * The built face, on localhost rather than file://. The bridge only accepts
+ * sockets from localhost origins, the media permissions above are granted by
+ * origin, and the page's CSP is written for 'self' over http — a file:// page
+ * would fail all three. Bound to loopback; nothing outside the machine sees it.
+ */
+function serveFace() {
+  const root = path.join(ROOT, 'dist')
+  const server = http.createServer((req, res) => {
+    let rel = decodeURIComponent(new URL(req.url, 'http://x').pathname)
+    if (rel.endsWith('/')) rel += 'index.html'
+    const file = path.join(root, path.normalize(rel))
+    // A path that climbs out of dist/ is refused, not resolved.
+    if (!file.startsWith(root)) {
+      res.writeHead(403)
+      return res.end()
+    }
+    fs.readFile(file, (err, data) => {
+      if (err) {
+        res.writeHead(404)
+        return res.end()
+      }
+      res.writeHead(200, {
+        'content-type': MIME[path.extname(file).toLowerCase()] || 'application/octet-stream',
+        'cache-control': 'no-cache',
+      })
+      res.end(data)
+    })
+  })
+  return new Promise((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(FACE_PORT, '127.0.0.1', () => resolve(server))
   })
 }
 
@@ -177,6 +281,9 @@ function createWindow() {
     backgroundColor: '#04123a',
     autoHideMenuBar: true,
     title: 'J.A.R.V.I.S.',
+    // The installed exe carries the icon already; this covers `npm run app`,
+    // where the window would otherwise show Electron's.
+    icon: path.join(ROOT, 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -210,8 +317,29 @@ app.whenReady().then(async () => {
 
   // `npm run app:writes` — buttons, typing and the rest of the effectful tools.
   const writes = process.argv.includes('--writes') ? { JARVIS_ALLOW_WRITES: '1' } : {}
-  run('bridge', ['bridge/server.mjs'], { JARVIS_BROWSER_CDP: String(CDP_PORT), ...writes })
-  run('face', ['node_modules/vite/bin/vite.js', '--port', String(FACE_PORT), '--strictPort'], {})
+  const settings = PACKAGED
+    ? {
+        JARVIS_ENV_FILE: path.join(SETTINGS_DIR, '.env.local'),
+        JARVIS_PREFS_FILE: path.join(SETTINGS_DIR, 'preferencias.md'),
+        JARVIS_ALLOWED_ORIGINS: `http://localhost:${FACE_PORT},http://127.0.0.1:${FACE_PORT}`,
+      }
+    : {}
+  run('bridge', ['bridge/server.mjs'], {
+    JARVIS_BROWSER_CDP: String(CDP_PORT),
+    ...settings,
+    ...writes,
+  })
+  if (PACKAGED) {
+    try {
+      await serveFace()
+    } catch (err) {
+      console.error(`[app] could not serve the interface: ${err.message}`)
+      app.quit()
+      return
+    }
+  } else {
+    run('face', ['node_modules/vite/bin/vite.js', '--port', String(FACE_PORT), '--strictPort'], {})
+  }
 
   try {
     await waitFor(FACE_URL)

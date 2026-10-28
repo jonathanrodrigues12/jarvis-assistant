@@ -8,8 +8,15 @@
  * the defaults. Variables already set in the environment win. The file is
  * gitignored (*.local), which is what makes it a safe home for a key.
  */
-try {
-  process.loadEnvFile(new URL('../.env.local', import.meta.url))
-} catch {
-  // No file is the normal case; everything has a default.
+//
+// The installed app points JARVIS_ENV_FILE at %APPDATA%\JARVIS\.env.local, so the
+// keys never ship inside the installer. It is loaded first, so it wins over a
+// copy beside the bridge.
+for (const file of [process.env.JARVIS_ENV_FILE, new URL('../.env.local', import.meta.url)]) {
+  if (!file) continue
+  try {
+    process.loadEnvFile(file)
+  } catch {
+    // No file is the normal case; everything has a default.
+  }
 }

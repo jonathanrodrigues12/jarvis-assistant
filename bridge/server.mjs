@@ -442,7 +442,8 @@ repita no card seguinte o que já está na fileira.
  * rather than once at boot, so an edit takes effect on the next page reload
  * without restarting the bridge. The file is gitignored: it is personal.
  */
-const PREFS_PATH = new URL('../preferencias.md', import.meta.url)
+// The installed app keeps it in %APPDATA%\JARVIS and says so in JARVIS_PREFS_FILE.
+const PREFS_PATH = process.env.JARVIS_PREFS_FILE ?? new URL('../preferencias.md', import.meta.url)
 
 function readPreferences() {
   try {
@@ -1261,7 +1262,8 @@ void ollamaReady().then((ok) =>
     ok
       ? `[jarvis] ollama ready · ${OLLAMA_MODEL} at ${OLLAMA_URL}` +
           (DEFAULT_BRAIN === 'ollama' ? ' (default brain)' : ' (press M on the HUD to switch)')
-      : `[jarvis] ollama unavailable — start it and run \`ollama pull ${OLLAMA_MODEL}\``,
+      : `[jarvis] ollama unavailable — start Ollama, and if ${OLLAMA_MODEL} is missing build it` +
+          ' from bridge/ollama/Modelfile (see the README)',
   ),
 )
 console.log(
