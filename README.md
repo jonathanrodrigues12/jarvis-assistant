@@ -144,7 +144,7 @@ The answers go to `%APPDATA%\JARVIS\jarvis.ini` and are read on every launch,
 so they override the `VITE_USER_NAME`, `VITE_USER_TITLE` and `VITE_TTS_ENGINE`
 compiled into the build. Change them by editing that file (then restart
 JARVIS) or by running the installer again, which shows them filled in.
-Automatic updates install silently and leave the file alone.
+Automatic updates skip the question and leave the file alone.
 
 ```ini
 [interface]
@@ -167,8 +167,8 @@ Installed, JARVIS lives in the **system tray**:
 
 Installed copies update themselves from this repository's GitHub releases. On
 each launch the app checks for a newer version and, if there is one, asks:
-**Atualizar agora** downloads it (progress shows on the taskbar icon), installs
-it silently and restarts JARVIS; **Depois** asks again next launch. Settings in
+**Atualizar agora** downloads it (progress shows on the taskbar icon), closes
+JARVIS, shows the installer's progress window and starts the new version; **Depois** asks again next launch. Settings in
 `%APPDATA%\JARVIS` are never touched by an update.
 
 To ship a version, push a tag:

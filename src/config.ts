@@ -166,7 +166,7 @@ export const ORB_STYLE: 'nucleus' | 'filaments' | 'reactor' = choice(
 
 const RAW_USER_NAME = str(installed.userName) ?? str(import.meta.env.VITE_USER_NAME)
 
-/** The user's name, as the side panels show it. */
+/** The user's name, as the start-up screen and the side panels show it. */
 export const USER_NAME = (RAW_USER_NAME ?? 'SENHOR').toUpperCase()
 
 /** How he addresses the user: 'senhor' or 'senhora'. Also picks bem-vindo/a. */

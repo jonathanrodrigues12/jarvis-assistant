@@ -1,7 +1,7 @@
 {
   "name": "jarvis",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.1",
   "description": "A browser voice assistant with an Iron Man holographic interface, driven by Claude Code through a small Node bridge.",
   "license": "MIT",
   "type": "module",

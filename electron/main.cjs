@@ -18,7 +18,7 @@
  */
 
 const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, session } = require('electron')
-const { spawn } = require('node:child_process')
+const { spawn, spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
 const path = require('node:path')
@@ -154,6 +154,28 @@ function run(name, args, env) {
     if (!quitting) app.quit()
   })
   children.push(child)
+}
+
+/**
+ * Stops the bridge and the face, and everything they started. On Windows a
+ * plain kill reaches only the child itself: the Claude CLI and Piper the bridge
+ * runs would live on, holding files inside the install folder — and an update
+ * installing over files in use leaves a half-installed app behind. So the
+ * whole tree goes, and synchronously, before anything else happens.
+ */
+function stopChildren() {
+  for (const c of children) {
+    if (c.exitCode !== null || c.signalCode !== null) continue
+    try {
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/pid', String(c.pid), '/T', '/F'], { windowsHide: true })
+      } else {
+        c.kill()
+      }
+    } catch {
+      /* already gone */
+    }
+  }
 }
 
 /** Resolves once something answers at `url`, or rejects after `ms`. */
@@ -383,8 +405,8 @@ function createTray() {
 /**
  * Installed, each launch asks GitHub whether a newer release exists (the
  * release workflow publishes one per `v*` tag). Nothing is downloaded until the
- * user agrees; once it is, the installer runs silently and JARVIS restarts on
- * the new version.
+ * user agrees; once it is, the installer runs, showing its progress, and
+ * JARVIS restarts on the new version.
  */
 function checkForUpdates() {
   const { autoUpdater } = require('electron-updater')
@@ -408,7 +430,11 @@ function checkForUpdates() {
   autoUpdater.on('update-downloaded', () => {
     mainWindow?.setProgressBar(-1)
     quitting = true
-    autoUpdater.quitAndInstall(true, true)
+    stopChildren()
+    // Not silent: the installer's progress window is the only sign the update
+    // is happening. With --updated it skips its questions (and the JARVIS
+    // page in build/installer.nsh), shows the copy, and starts JARVIS again.
+    autoUpdater.quitAndInstall(false, true)
   })
   autoUpdater.on('error', (err) => {
     mainWindow?.setProgressBar(-1)
@@ -490,11 +516,5 @@ app.on('window-all-closed', () => app.quit())
 
 app.on('before-quit', () => {
   quitting = true
-  for (const c of children) {
-    try {
-      c.kill()
-    } catch {
-      /* already gone */
-    }
-  }
+  stopChildren()
 })

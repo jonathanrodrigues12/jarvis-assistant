@@ -5,8 +5,8 @@
 ;
 ; The answers go to %APPDATA%\JARVIS\jarvis.ini, read by electron/main.cjs on
 ; every launch, so they are the installer's to set and nobody's to compile in.
-; Updates install silently, which skips every page — the file is then left
-; exactly as it was. A manual reinstall shows the page again, filled in.
+; Updates skip the page and leave the file exactly as it was. A manual
+; reinstall shows the page again, filled in.
 
 !macro customPageAfterChangeDir
   !include nsDialogs.nsh
@@ -27,6 +27,9 @@
   Page custom JarvisPageShow JarvisPageLeave
 
   Function JarvisPageShow
+    ${if} ${isUpdated}
+      Abort
+    ${endif}
     !insertmacro MUI_HEADER_TEXT "Personalizar o J.A.R.V.I.S." "Como ele deve chamar você e com que voz deve falar."
 
     ReadINIStr $JarvisName "${JARVIS_INI}" interface user_name

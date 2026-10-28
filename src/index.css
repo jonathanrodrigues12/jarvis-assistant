@@ -2154,6 +2154,186 @@ kbd {
   opacity: 0.7;
 }
 
+/* ------------------------------------------------------- biometric gate */
+
+/* The proportions of the reference: a headline held between two cyan
+   brackets, and under it a bar wider than the brackets, with what is
+   happening written inside it. The camera circle shows only during a scan.
+   See AuthGate.tsx. */
+.auth {
+  --auth: #19e3e3;
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 55%, rgba(10, 40, 48, 0.55), transparent 70%),
+    #020507;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  font-family: 'Orbitron', 'Chakra Petch', sans-serif;
+  color: var(--auth);
+  user-select: none;
+}
+.auth-denied,
+.auth-error { --auth: #ff4d5e; }
+
+.auth-plate {
+  width: min(560px, 90vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: auth-in 900ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes auth-in {
+  from { opacity: 0; transform: scale(0.94); filter: blur(6px); }
+}
+
+/* The headline block, and the brackets that hug it. */
+.auth-head {
+  position: relative;
+  width: 74%;
+  padding: 16px 0 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.auth-bracket {
+  position: absolute;
+  top: -6px;
+  bottom: -6px;
+  width: 9px;
+  border: 3px solid var(--auth);
+  filter: drop-shadow(0 0 8px var(--auth));
+}
+.auth-bracket-l { left: 0; border-right: 0; }
+.auth-bracket-r { right: 0; border-left: 0; }
+
+.auth-user {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: #e8ffff;
+  text-shadow: 0 0 10px rgba(200, 255, 255, 0.45);
+  text-align: center;
+}
+.auth-title {
+  font-size: clamp(26px, 5.4vw, 40px);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-align: center;
+  text-shadow: 0 0 18px var(--auth);
+}
+
+/* The camera, only while a face is being looked at: big enough to see yourself
+   in it and line your face up, lightly tinted to sit in the palette. */
+.auth-eye {
+  display: none;
+  position: relative;
+  width: clamp(180px, 28vh, 260px);
+  height: clamp(180px, 28vh, 260px);
+  margin-bottom: 28px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid color-mix(in srgb, var(--auth) 70%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--auth) 45%, transparent);
+}
+.auth-eye-on {
+  display: block;
+  animation: auth-in 500ms ease both;
+}
+.auth-eye video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  filter: saturate(0.5) contrast(1.1);
+}
+/* A light cyan cast and a vignette, so the feed reads as a scanner's view
+   while the face stays clearly recognisable. */
+.auth-eye::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, transparent 55%, rgba(0, 10, 14, 0.65) 100%),
+    color-mix(in srgb, var(--auth) 14%, transparent);
+  mix-blend-mode: normal;
+  pointer-events: none;
+}
+.auth-sweep {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--auth);
+  box-shadow: 0 0 12px var(--auth);
+  animation: auth-sweep 1.6s ease-in-out infinite alternate;
+  z-index: 1;
+  opacity: 0.8;
+}
+@keyframes auth-sweep {
+  from { top: 4%; }
+  to { top: 94%; }
+}
+
+.auth-bar {
+  position: relative;
+  width: 100%;
+  height: 50px;
+  margin-top: 36px;
+  background: color-mix(in srgb, var(--auth) 22%, transparent);
+  overflow: hidden;
+}
+.auth-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, var(--auth) 62%, #023);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--auth) 60%, transparent);
+  transition: width 220ms linear;
+}
+/* The step in progress, re-keyed on every change so each new one slides in. */
+.auth-bar-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 14px;
+  font-size: clamp(11px, 2.4vw, 17px);
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  white-space: nowrap;
+  color: rgba(0, 22, 26, 0.78);
+  animation: auth-step 260ms ease-out both;
+}
+@keyframes auth-step {
+  from { opacity: 0; transform: translateX(14px); }
+}
+.auth-detail {
+  min-height: 1em;
+  margin-top: 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+  text-align: center;
+}
+.auth-retry {
+  margin-top: 14px;
+  padding: 10px 22px;
+  font: 700 12px 'Orbitron', sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--auth);
+  background: transparent;
+  border: 2px solid var(--auth);
+  cursor: pointer;
+}
+
+.auth-granted .auth-title { animation: auth-flash 300ms ease 3; }
+@keyframes auth-flash { 50% { opacity: 0.35; } }
+
 /* ------------------------------------------------------------ side columns */
 
 /* Two columns of glass cards either side of the orb (SidePanels.tsx), in the
