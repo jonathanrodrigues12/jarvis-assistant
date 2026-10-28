@@ -17,7 +17,7 @@
  * already asks for.
  */
 
-const { app, BrowserWindow, session } = require('electron')
+const { app, BrowserWindow, Menu, Tray, nativeImage, session } = require('electron')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -66,6 +66,15 @@ const BRIDGE_PORT = Number(process.env.JARVIS_BRIDGE_PORT || 8787)
 const CDP_PORT = Number(process.env.JARVIS_BROWSER_CDP || 9334)
 const FACE_URL = `http://localhost:${FACE_PORT}/`
 const PARTITION = 'persist:jarvis'
+
+/**
+ * Installed, JARVIS is one resident process: a second launch only brings the
+ * window of the first back, rather than failing on ports that one holds.
+ */
+if (PACKAGED && !app.requestSingleInstanceLock()) {
+  app.quit()
+  process.exit(0)
+}
 
 app.commandLine.appendSwitch('remote-debugging-port', String(CDP_PORT))
 // The intro and the voice must play without a click on the page first.
@@ -289,13 +298,49 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      // Hidden in the tray he still has to hear the wake word and answer, so
+      // the page keeps its full timers and audio when nobody is looking at it.
+      backgroundThrottling: false,
     },
   })
+  // Installed, closing the window only hides it; JARVIS keeps running in the
+  // tray, and quitting is the tray menu's job.
+  if (PACKAGED) {
+    win.on('close', (e) => {
+      if (quitting) return
+      e.preventDefault()
+      win.hide()
+    })
+  }
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.type === 'keyDown' && input.key === 'F11') win.setFullScreen(!win.isFullScreen())
   })
   win.loadURL(FACE_URL)
   return win
+}
+
+let mainWindow = null
+let tray = null
+
+function showWindow() {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(ROOT, 'build', 'icon.png'))
+  tray = new Tray(icon.resize({ width: 16, height: 16, quality: 'best' }))
+  tray.setToolTip('J.A.R.V.I.S.')
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: 'Abrir J.A.R.V.I.S.', click: showWindow },
+      { type: 'separator' },
+      { label: 'Sair', click: () => app.quit() },
+    ]),
+  )
+  tray.on('click', showWindow)
 }
 
 // ---------------------------------------------------------------------------
@@ -348,8 +393,11 @@ app.whenReady().then(async () => {
     app.quit()
     return
   }
-  createWindow()
+  mainWindow = createWindow()
+  if (PACKAGED) createTray()
 })
+
+app.on('second-instance', showWindow)
 
 app.on('window-all-closed', () => app.quit())
 

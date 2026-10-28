@@ -153,19 +153,7 @@ export const ORB_STYLE: 'nucleus' | 'filaments' | 'reactor' = choice(
   'nucleus',
 )
 
-/**
- * The biometric gate in front of the interface (AuthGate.tsx).
- *   'face' — scan and recognise the user's face first. The default.
- *   'off'  — straight to the ignition screen.
- */
-export const AUTH_MODE: 'face' | 'off' = choice(
-  'VITE_AUTH',
-  import.meta.env.VITE_AUTH,
-  ['face', 'off'] as const,
-  'face',
-)
-
-/** Shown on the biometric gate once the face has been recognised. */
+/** The user's name, as the side panels show it. */
 export const USER_NAME = (str(import.meta.env.VITE_USER_NAME) ?? 'SENHOR').toUpperCase()
 
 /** How he addresses the user: 'senhor' or 'senhora'. Also picks bem-vindo/a. */
