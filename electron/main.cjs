@@ -17,7 +17,7 @@
  * already asks for.
  */
 
-const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session } = require('electron')
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, session } = require('electron')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -62,6 +62,43 @@ if (PACKAGED) {
     /* logging is a convenience; run without it */
   }
 }
+
+/**
+ * What the installer asked: the user's name, how to address them, and the voice
+ * (build/installer.nsh writes it to %APPDATA%\JARVIS\jarvis.ini). Handed to the
+ * page on request through the preload; from the source tree there is no such
+ * file and the page keeps the VITE_ values of .env.local.
+ */
+function readSettings() {
+  if (!PACKAGED) return {}
+  let text
+  try {
+    const raw = fs.readFileSync(path.join(SETTINGS_DIR, 'jarvis.ini'))
+    // The installer writes it as UTF-16 so an accented name survives; a copy
+    // edited by hand may well be saved back as UTF-8.
+    text =
+      raw[0] === 0xff && raw[1] === 0xfe
+        ? raw.subarray(2).toString('utf16le')
+        : raw.toString('utf8').replace(/^\uFEFF/, '')
+  } catch {
+    return {}
+  }
+  const ini = {}
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*([a-z_]+)\s*=\s*(.*?)\s*$/i)
+    if (m) ini[m[1].toLowerCase()] = m[2]
+  }
+  return {
+    userName: ini.user_name || undefined,
+    userTitle: ini.user_title || undefined,
+    ttsEngine: ini.tts_engine || undefined,
+  }
+}
+
+ipcMain.on('jarvis:settings', (e) => {
+  e.returnValue = readSettings()
+})
+
 const BRIDGE_PORT = Number(process.env.JARVIS_BRIDGE_PORT || 8787)
 const CDP_PORT = Number(process.env.JARVIS_BROWSER_CDP || 9334)
 const FACE_URL = `http://localhost:${FACE_PORT}/`
@@ -430,6 +467,15 @@ app.whenReady().then(async () => {
     console.error(`[app] ${err.message}`)
     app.quit()
     return
+  }
+  // Installed, the face is served at once while the bridge is still loading its
+  // modules, and a page that opens first finds no bridge and stops there. So the
+  // window waits for the bridge too. If it never answers, the window opens
+  // anyway — the page says what is wrong better than a window that never comes.
+  try {
+    await waitFor(`http://127.0.0.1:${BRIDGE_PORT}/health`)
+  } catch (err) {
+    console.error(`[app] ${err.message}`)
   }
   mainWindow = createWindow()
   if (PACKAGED) {

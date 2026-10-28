@@ -20,11 +20,15 @@ listens through the browser's own speech, and everything still works.
 **In one line:** a Claude Code subscription, plus two free things every computer
 can have — Node.js and Chrome. That's the whole list.
 
-- **Claude Code, installed and logged in** — this is the only account you need.
-  Install it with the official method — `npm install -g @anthropic-ai/claude-code`,
-  or the platform installer at <https://docs.claude.com/en/docs/claude-code> —
-  then run `claude` once and complete login. The bridge reuses that login. **No
-  API key**, and usage is billed to your existing Claude account.
+- **A Claude Code login on this computer** — this is the only account you need.
+  The Agent SDK ships its own copy of the `claude` binary, so JARVIS does not run
+  your installed CLI; what it needs is the *login*. Install Claude Code once —
+  `npm install -g @anthropic-ai/claude-code`, or the platform installer at
+  <https://docs.claude.com/en/docs/claude-code> — run `claude`, and complete
+  login. That leaves the credentials in `~/.claude` (`%USERPROFILE%\.claude` on
+  Windows), which the bridge reuses: **no API key**, billed to your existing
+  Claude account. See [Signing in to Claude](#signing-in-to-claude) for the
+  alternatives.
 - **Node.js 20 or newer** — free, one installer from <https://nodejs.org>. This
   is a Node web app, so it is the one unavoidable tool.
 - **Google Chrome or Microsoft Edge**, in a **real browser window** — not an
@@ -82,6 +86,106 @@ Click **INITIALISE**, allow the microphone when asked, and say **"Hey Jarvis"**.
 
 ---
 
+## Signing in to Claude
+
+The bridge's Claude brain runs through the Agent SDK, which bundles the
+`claude` binary — so the Claude Code CLI does not have to be on the `PATH`, and
+the installed desktop app works on a machine without Node. It does need to be
+signed in, in one of these ways:
+
+| How | What to do | Billed to |
+|---|---|---|
+| **Claude Code login** (default) | Install Claude Code once, run `claude`, log in. Credentials land in `~/.claude`, where the bridge finds them. | Your Claude subscription |
+| **Long-lived token** | Run `claude setup-token` on any machine, put `CLAUDE_CODE_OAUTH_TOKEN=...` in `.env.local` (installed app: `%APPDATA%\JARVIS\.env.local`). No CLI needed on the machine running JARVIS. | Your Claude subscription |
+| **API key** | Put `ANTHROPIC_API_KEY=...` in that same `.env.local`. | Anthropic API usage |
+
+With none of these, the Claude brain cannot answer — but the
+[local brain (Ollama)](#local-brain-ollama) needs no account at all.
+
+The MCP servers JARVIS can use are read from `~/.claude.json`, the same file
+Claude Code keeps its configuration in. On a machine where Claude Code was
+never set up, he still has his built-in tools (HUD, interface, briefing, home)
+but none of yours.
+
+---
+
+## Desktop app (Windows)
+
+The same interface as a desktop window, with a real embedded browser (signed-in
+sites, scripts and all) that the web build cannot have.
+
+```bash
+npm run app          # from the source tree: starts bridge + Vite + window
+npm run app:writes   # same, with effectful tools allowed (see below)
+```
+
+### Building the installer
+
+```bash
+npm run dist
+```
+
+Writes `release/JARVIS-Setup-<version>.exe`. The installer carries **no keys**:
+on first build, this machine's `.env.local` and `preferencias.md` are copied to
+`%APPDATA%\JARVIS`, which is where the installed app reads them. On another
+machine, put a `.env.local` there by hand. The bridge's output goes to
+`%APPDATA%\JARVIS\jarvis.log`.
+
+### Installing
+
+The installer asks three things, after the install folder:
+
+- **your name** — shown on the HUD and used in the welcome;
+- **senhor / senhora** — how he addresses you;
+- **the voice** — Piper (local, Brazilian Portuguese, the default), the Windows
+  voice, or Kokoro (British English, slow).
+
+The answers go to `%APPDATA%\JARVIS\jarvis.ini` and are read on every launch,
+so they override the `VITE_USER_NAME`, `VITE_USER_TITLE` and `VITE_TTS_ENGINE`
+compiled into the build. Change them by editing that file (then restart
+JARVIS) or by running the installer again, which shows them filled in.
+Automatic updates install silently and leave the file alone.
+
+```ini
+[interface]
+user_name=Jonathan Rodrigues
+user_title=senhor
+tts_engine=piper
+```
+
+### Running in the background
+
+Installed, JARVIS lives in the **system tray**:
+
+- Closing the window only hides it — he keeps listening for the wake word and
+  answering.
+- Click the tray icon to bring the window back; right-click for **Abrir** and
+  **Sair**. Quitting is the tray's job.
+- Launching it again just brings back the running instance.
+
+### Updates
+
+Installed copies update themselves from this repository's GitHub releases. On
+each launch the app checks for a newer version and, if there is one, asks:
+**Atualizar agora** downloads it (progress shows on the taskbar icon), installs
+it silently and restarts JARVIS; **Depois** asks again next launch. Settings in
+`%APPDATA%\JARVIS` are never touched by an update.
+
+To ship a version, push a tag:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+The `release` workflow (`.github/workflows/release.yml`) builds the installer
+on a Windows runner — downloading Piper, since it is not in git — and publishes
+it as a GitHub release. The version comes from the tag; `package.json` never
+needs bumping. Nothing personal is compiled in — the name and the voice come
+from the installer — so the workflow needs no secrets or variables.
+
+---
+
 ## How it works
 
 JARVIS is two processes. The browser is the face and the voice; the bridge is
@@ -108,7 +212,7 @@ WebSocket (plus a few HTTP endpoints) on `ws://localhost:8787`.
 rest. The bridge can. And because it is the Agent SDK, it authenticates off your
 existing Claude Code login: no API key, billed to that same Claude account.
 
-**The model.** `claude-opus-5` at effort `medium` by default. Override with the
+**The model.** `claude-opus-5` at effort `high` by default. Override with the
 `JARVIS_MODEL` and `JARVIS_EFFORT` environment variables. On startup the bridge
 prints its choice, e.g. `[jarvis] model claude-opus-5 · effort medium`.
 
@@ -263,7 +367,7 @@ Everything is optional in bridge mode. Frontend settings live in `.env.local`
 |---|---|---|
 | `JARVIS_BRIDGE_PORT` | `8787` | Port for the WebSocket + HTTP endpoints |
 | `JARVIS_MODEL` | `claude-opus-5` | Model to run |
-| `JARVIS_EFFORT` | `medium` | Reasoning effort |
+| `JARVIS_EFFORT` | `high` | Reasoning effort |
 | `JARVIS_ALLOW_WRITES` | off | `1` allows effectful tools (see below) |
 | `JARVIS_ALLOWED_ORIGINS` | local dev | Extra WebSocket origins to accept |
 | `JARVIS_ALLOW_NO_ORIGIN` | off | Accept connections with no `Origin` header |

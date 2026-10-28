@@ -18,6 +18,17 @@ function str(raw: unknown): string | undefined {
 }
 
 /**
+ * What the installer asked the user, handed over by the desktop app's preload
+ * (electron/preload.cjs). It wins over the VITE_ value for the same setting,
+ * so an installed copy is personalised without being rebuilt; in the browser,
+ * or with the setting left blank, the VITE_ value stands.
+ */
+const installed =
+  (window as unknown as {
+    jarvisApp?: { settings?: { userName?: string; userTitle?: string; ttsEngine?: string } }
+  }).jarvisApp?.settings ?? {}
+
+/**
  * Fixed-choice options. An unrecognised value is nearly always a typo, and
  * quietly falling back to the default hides it until it costs you a take.
  */
@@ -121,7 +132,7 @@ export const USE_ELEVENLABS = flag(
  */
 export const TTS_ENGINE: 'kokoro' | 'piper' | 'system' = choice(
   'VITE_TTS_ENGINE',
-  import.meta.env.VITE_TTS_ENGINE,
+  str(installed.ttsEngine) ?? import.meta.env.VITE_TTS_ENGINE,
   ['kokoro', 'piper', 'system'] as const,
   'system',
 )
@@ -153,21 +164,23 @@ export const ORB_STYLE: 'nucleus' | 'filaments' | 'reactor' = choice(
   'nucleus',
 )
 
+const RAW_USER_NAME = str(installed.userName) ?? str(import.meta.env.VITE_USER_NAME)
+
 /** The user's name, as the side panels show it. */
-export const USER_NAME = (str(import.meta.env.VITE_USER_NAME) ?? 'SENHOR').toUpperCase()
+export const USER_NAME = (RAW_USER_NAME ?? 'SENHOR').toUpperCase()
 
 /** How he addresses the user: 'senhor' or 'senhora'. Also picks bem-vindo/a. */
 export const USER_TITLE: 'senhor' | 'senhora' = choice(
   'VITE_USER_TITLE',
-  import.meta.env.VITE_USER_TITLE,
+  str(installed.userTitle) ?? import.meta.env.VITE_USER_TITLE,
   ['senhor', 'senhora'] as const,
   'senhor',
 )
 
 /** "Bem-vindo, senhor Jonathan. Em que posso ajudar hoje?" — said once the
- *  gate has let the user in and the assistant is ready to listen. */
+ *  boot has finished and the assistant is ready to listen. */
 export function welcomeLine(): string {
-  const first = str(import.meta.env.VITE_USER_NAME)?.split(/\s+/)[0]
+  const first = RAW_USER_NAME?.split(/\s+/)[0]
   const welcome = USER_TITLE === 'senhora' ? 'Bem-vinda' : 'Bem-vindo'
   return `${welcome}, ${USER_TITLE}${first ? ` ${first}` : ''}. Em que posso ajudar hoje?`
 }

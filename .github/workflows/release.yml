@@ -23,10 +23,10 @@ jobs:
       run:
         shell: bash
     env:
-      # Baked into the interface at build time, like the VITE_ lines of a local
-      # .env.local. Set them under Settings → Secrets and variables → Variables.
-      VITE_USER_NAME: ${{ vars.VITE_USER_NAME }}
-      VITE_TTS_ENGINE: ${{ vars.VITE_TTS_ENGINE || 'piper' }}
+      # The fallback voice when the installer's choice is missing. The name, the
+      # form of address and the voice itself are asked by the installer
+      # (build/installer.nsh), not compiled in.
+      VITE_TTS_ENGINE: piper
     steps:
       - uses: actions/checkout@v4
 
