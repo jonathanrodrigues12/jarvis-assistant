@@ -1,10 +1,12 @@
 /**
  * Builds the Windows installer: `npm run dist`.
  *
- *   1. vendors the WebAssembly and face models into public/, so the build has
- *      them (the dev server copies them on start; a build has no such step);
+ *   1. vendors the hand-tracking WebAssembly into public/, so the build has
+ *      it (the dev server copies it on start; a build has no such step);
  *   2. builds the face into dist/;
- *   3. packages everything with electron-builder into release/;
+ *   3. packages everything with electron-builder into release/ — and with
+ *      `--publish`, uploads it as a GitHub release the installed apps update
+ *      from (the release workflow does this; see .github/workflows);
  *   4. copies this machine's .env.local and preferencias.md into
  *      %APPDATA%\JARVIS, where the installed app reads them.
  *
@@ -29,9 +31,11 @@ function step(label, command, args) {
   }
 }
 
+const publish = process.argv.includes('--publish') ? 'always' : 'never'
+
 vendorAssets()
 step('building the interface', 'npm', ['run', 'build'])
-step('packaging the app', 'npx', ['electron-builder', '--win', 'nsis', '--x64'])
+step('packaging the app', 'npx', ['electron-builder', '--win', 'nsis', '--x64', '--publish', publish])
 
 const appData = process.env.APPDATA
 if (appData) {

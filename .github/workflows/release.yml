@@ -1,0 +1,58 @@
+# Builds the Windows installer and publishes it as a GitHub release, which the
+# installed apps find on their next launch (electron-updater, electron/main.cjs).
+#
+# To ship a version:  git tag v1.2.3 && git push origin v1.2.3
+#
+# The tag is the version: package.json is set from it here, so it never has to
+# be bumped by hand. The installer carries no keys — those stay in each
+# machine's %APPDATA%\JARVIS\.env.local, which an update never touches.
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Baked into the interface at build time, like the VITE_ lines of a local
+      # .env.local. Set them under Settings → Secrets and variables → Variables.
+      VITE_USER_NAME: ${{ vars.VITE_USER_NAME }}
+      VITE_TTS_ENGINE: ${{ vars.VITE_TTS_ENGINE || 'piper' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Version from the tag
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
+
+      # The local voice is gitignored (~90MB), so the build fetches it the way
+      # the README installs it.
+      - name: Piper
+        run: |
+          mkdir -p piper/voices && cd piper
+          curl -fsSLO https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip
+          unzip -q piper_windows_amd64.zip && rm piper_windows_amd64.zip
+          cd voices
+          for f in pt_BR-faber-medium.onnx pt_BR-faber-medium.onnx.json; do
+            curl -fsSLO https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/faber/medium/$f
+          done
+
+      - name: Build and publish
+        run: npm run dist -- --publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

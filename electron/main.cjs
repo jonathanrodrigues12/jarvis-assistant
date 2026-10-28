@@ -17,7 +17,7 @@
  * already asks for.
  */
 
-const { app, BrowserWindow, Menu, Tray, nativeImage, session } = require('electron')
+const { app, BrowserWindow, Menu, Tray, dialog, nativeImage, session } = require('electron')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -343,6 +343,44 @@ function createTray() {
   tray.on('click', showWindow)
 }
 
+/**
+ * Installed, each launch asks GitHub whether a newer release exists (the
+ * release workflow publishes one per `v*` tag). Nothing is downloaded until the
+ * user agrees; once it is, the installer runs silently and JARVIS restarts on
+ * the new version.
+ */
+function checkForUpdates() {
+  const { autoUpdater } = require('electron-updater')
+  autoUpdater.autoDownload = false
+  autoUpdater.logger = console
+
+  autoUpdater.on('update-available', async (info) => {
+    showWindow()
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Atualização disponível',
+      message: `Uma nova versão do J.A.R.V.I.S. está disponível (${info.version}).`,
+      detail: `Versão instalada: ${app.getVersion()}. Deseja atualizar agora? O app será reiniciado ao final.`,
+      buttons: ['Atualizar agora', 'Depois'],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    if (response === 0) autoUpdater.downloadUpdate().catch(() => {})
+  })
+  autoUpdater.on('download-progress', (p) => mainWindow?.setProgressBar(p.percent / 100))
+  autoUpdater.on('update-downloaded', () => {
+    mainWindow?.setProgressBar(-1)
+    quitting = true
+    autoUpdater.quitAndInstall(true, true)
+  })
+  autoUpdater.on('error', (err) => {
+    mainWindow?.setProgressBar(-1)
+    console.error(`[app] update failed: ${err.message}`)
+  })
+
+  autoUpdater.checkForUpdates().catch(() => {})
+}
+
 // ---------------------------------------------------------------------------
 
 let quitting = false
@@ -394,7 +432,10 @@ app.whenReady().then(async () => {
     return
   }
   mainWindow = createWindow()
-  if (PACKAGED) createTray()
+  if (PACKAGED) {
+    createTray()
+    checkForUpdates()
+  }
 })
 
 app.on('second-instance', showWindow)
